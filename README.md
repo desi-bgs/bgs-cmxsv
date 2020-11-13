@@ -1,2 +1,3 @@
 # bgs-cmxsv
-BGS Commissioning and Survey Validation
+BGS survey planning during Commissioning and Survey Validation phases of the
+DESI survey.
