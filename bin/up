@@ -1,0 +1,226 @@
+#!/usr/bin/env python
+from    __future__               import  absolute_import, division, print_function
+
+import  os
+import  time
+import  argparse
+import  fitsio
+import  desisurvey
+import  warnings
+
+from    multiprocessing          import  Pool, Array
+from    desisurvey.utils         import  get_location
+from    desisurvey.ephem         import  get_ephem
+from    astropy                  import  log
+
+import  ephem
+import  numpy                    as      np
+import  astropy.units            as      u
+
+from    desisurvey.ephem         import  Ephemerides
+from    desisurvey.utils         import  local_noon_on_date, get_date
+from    datetime                 import  datetime, date, timedelta
+from    astropy.time             import  Time, TimeDelta
+from    astropy.coordinates      import  SkyCoord, EarthLocation, AltAz
+from    whatprogram              import  whatprogram
+from    astropy.table            import  Table
+from    astropy.io               import  ascii
+from    astropy.utils.exceptions import AstropyWarning
+
+# IERS range warning suppression.
+warnings.filterwarnings('ignore', category=AstropyWarning, append=True)
+
+
+parser           = argparse.ArgumentParser(usage = "{prog} [options]")
+
+parser.add_argument("--tiles", type=str, help="input tile file", default='/global/cfs/cdirs/desi/sv/bgs/tiles/phaseone/BGS_SV_30_3x_superset60_Apr2020v2.fits')
+parser.add_argument("--bright", type=int,  default=1, help="restrict to bright nights only")
+parser.add_argument("--firstday", type=str,  default=get_date(datetime.now().date().isoformat()), help="first day considered")
+parser.add_argument("--lastday", type=str,  default='2021-03-01', help="last day considered")
+parser.add_argument("--outdir", type=str, required=True, help="path to output directory.")
+parser.add_argument("--fullmoonnights", type=int,  default=7, help="full moon shut down period (nights)")
+parser.add_argument("--twilight", type=int,  default=0, help="include twilight")
+parser.add_argument("--numproc", type=int,  default=16, help="include twilight")
+
+print('\n\nWelcome to up.\n\n')
+
+args             = parser.parse_args()
+
+startclock       = time.time()
+
+tiles            = Table.read(args.tiles)
+tiles            = tiles[tiles['IN_DESI'] > 0]
+
+config           = desisurvey.config.Configuration()
+
+first            = get_date(args.firstday)
+last             = get_date(args.lastday)
+
+min_altitude     = config.min_altitude().value
+
+avoid_bodies     = {}
+bodies           = list(config.avoid_bodies.keys)
+
+for body in bodies:
+  avoid_bodies[body] = getattr(config.avoid_bodies, body)().to(u.deg)
+
+##  Planet exclusion evaluated at midnight, moon exclusion at each mjd.                                                                                                                                                                    
+bodies.remove('moon')
+
+mayall           = desisurvey.utils.get_location()
+
+##                                                                                                                                                                                                                                        
+ra               = tiles['RA']
+dec              = tiles['DEC']
+
+## ephem table duration
+start            = datetime(year = 2019, month =  1,  day = 1)
+stop             = datetime(year = 2025, month = 12, day = 31)
+
+ephemtable       = Ephemerides(start.date(), stop.date(), restore='/global/cscratch1/sd/mjwilson/ephemtable/ephem_2019-01-01_2025-12-31.fits')
+
+num_nights       = (last - first).days
+
+if num_nights <= 0:
+  raise ValueError('Invalid dates.')
+
+hours            = np.zeros((3, num_nights))
+                
+##  Choose same times as those solved for in ephem, but more finely sample than 1/hr due to twilight.                                                                                                                                     
+N                = 96
+dt               = 24. / N
+t_obj            = np.linspace(0., 1., N + 1)
+
+##  For each tile, and each night, record the hrs visible in each program.                                                                                                                                                                 
+hrs_visible      = np.zeros(3 * len(ra) * num_nights, dtype=np.float).reshape(num_nights, len(ra), 3)
+
+months           = []
+
+for i in range(num_nights):
+    tonight      = first + timedelta(days=i)
+    isonoon      = get_date(tonight)
+    
+    fullmoon     = ephemtable.is_full_moon(isonoon)
+    monsoon      = desisurvey.utils.is_monsoon(isonoon)
+
+    if not isonoon.strftime("%B") in months:
+      months.append(isonoon.strftime("%B"))
+    
+    if fullmoon:
+      print('{}:\t   FULLMOON'.format(isonoon.isoformat()))
+      continue
+
+    if monsoon:
+      print('{}:\t   MONSOON'.format(isonoon.isoformat()))
+      continue
+    
+    ##  MJD for midnight on this date.                                                                                                                                                                                                    
+    midnight          = Time(isonoon.isoformat(), format='iso').mjd + 0.5
+
+    ##  Augmented with (b)dusk, (b)dawn at either end.   
+    programs, changes = ephemtable.get_night_program(isonoon, include_twilight=args.twilight, program_as_int=True)
+    
+    for p, dt in zip(programs, np.diff(changes)):
+      hours[p, i]    += 24. * dt
+
+    if args.bright & (hours[2, i] == 0.0):
+        continue
+        
+    print('{}:\t{: 6.1f} Dark\t{: 6.1f}\tGray\t{: 6.1f}\tBright.'.format(isonoon.isoformat(), hours[0, i] , hours[1, i] , hours[2, i]))
+    
+    row               = ephemtable.get_night(isonoon)
+    
+    dusk              = row['dusk']
+    dawn              = row['dawn']
+    
+    ##  Assume this does not vary much during the night.
+    moonfrac          = row['moon_illum_frac']
+    
+    ##  Includes twilight.                                                                                                                                                                                                                
+    bdusk             = row['brightdusk']
+    bdawn             = row['brightdawn']
+    
+    MJD0, MJD1        = bdusk, bdawn
+    LST0, LST1        = row['brightdusk_LST'], row['brightdawn_LST']
+    dLST              = (LST1 - LST0) / (MJD1 - MJD0)
+
+    indices           = np.arange(len(ra))
+    
+    ##  Planet exclusion evaluated at midnight, moon exclusion at each mjd.
+    for body in bodies:
+        bdec, bra = desisurvey.ephem.get_object_interpolator(row, body, altaz=False)(midnight)
+
+        too_close = desisurvey.utils.separation_matrix([bra] * u.deg, [bdec] * u.deg, ra[indices] * u.deg, dec[indices] * u.deg, avoid_bodies[body])[0]
+        indices   = indices[~too_close]
+
+    ##  On this day, enumerate over the time samples.                                                                                                     
+    def process_onetime(j):
+        mjd       = row['noon'] + t_obj[j]
+
+        ##  Include twilight currently.                                                                                                                                                                          
+        if (mjd < bdusk) or (mjd > bdawn):
+            return False, None, None
+
+        program   = whatprogram(mjd, programs, changes)
+        _time     = Time(mjd, format='mjd')                                                                                                                                                                  
+        pos       = SkyCoord(ra = ra[indices] * u.degree, dec = dec[indices] * u.degree, frame='icrs').transform_to(AltAz(obstime=_time, location=mayall))
+        alt       = pos.alt.degree
+
+        ishigh    = alt > min_altitude
+        isin      = indices[ishigh]
+
+        ##  Calculate the local apparent sidereal time in degrees.
+        LST       = LST0 + dLST * (mjd - MJD0)
+        hourangle = LST - ra
+
+        bdec, bra = desisurvey.ephem.get_object_interpolator(row, 'moon', altaz=False)(mjd)
+        too_close = desisurvey.utils.separation_matrix([bra] * u.deg, [bdec] * u.deg, ra[isin] * u.deg, dec[isin] * u.deg, avoid_bodies['moon'])[0]
+        isin      = isin[~too_close]
+
+        airmasses = desisurvey.utils.get_airmass(_time, ra[isin] * u.deg, dec[isin] * u.deg)
+        isin      = isin[airmasses < 2.0]
+
+        return  True, program, isin
+
+    tasks   = range(len(t_obj))
+      
+    # results = [process_onetime(j) for j in tasks]
+    results = Pool(processes=args.numproc).map(process_onetime, range(len(t_obj)))
+
+    for result in results:
+      success, program, isin = result
+
+      if success:                                                                                                                                                                                                                           
+        # [night, tile, program].                                                                                                                                                                                                           
+        hrs_visible[i, isin, program] += dt   
+    
+if len(months) > 12:
+    raise ValueError('Lower the last day to not repeat calculation for subsequent years.')
+  
+for month in months:
+  month        = month.upper()  
+  tiles[month] = [np.zeros(3, dtype=np.float32)] * len(tiles)
+
+for i in range(num_nights):
+  tonight      = first + timedelta(days=i)
+  isonoon      = get_date(tonight)
+
+  month        = isonoon.strftime("%B")
+  month        = month.upper()
+  
+  for j in range(3):
+    tiles[month][:,j] += hrs_visible[i,:,j]
+
+print('\n\n')
+
+toprint        = ['TILEID', 'RA', 'DEC'] + [x.upper() for x in months]
+tiles[toprint].pprint(max_width=-1)
+
+papertable     = tiles['TILEID', 'RA', 'DEC']
+papertable.sort('RA')
+
+ascii.write(papertable, args.outdir + '/tiletable.txt', Writer=ascii.Latex, overwrite=True, formats={'TILEID':'%d', 'RA':'%.2F', 'DEC':'%.2F'})
+
+endclock       = time.time()
+
+print('\n\nDone in {:.2f} seconds.\n\n'.format(endclock - startclock))
