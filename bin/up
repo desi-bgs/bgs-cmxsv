@@ -36,11 +36,11 @@ parser           = argparse.ArgumentParser(usage = "{prog} [options]")
 parser.add_argument("--tiles", type=str, help="input tile file", default='/global/cfs/cdirs/desi/sv/bgs/tiles/phaseone/BGS_SV_30_3x_superset60_Apr2020v2.fits')
 parser.add_argument("--bright", type=int,  default=1, help="restrict to bright nights only")
 parser.add_argument("--firstday", type=str,  default=get_date(datetime.now().date().isoformat()), help="first day considered")
-parser.add_argument("--lastday", type=str,  default='2021-03-01', help="last day considered")
+parser.add_argument("--lastday", type=str,  default='2021-10-01', help="last day considered")
 parser.add_argument("--outdir", type=str, required=True, help="path to output directory.")
 parser.add_argument("--fullmoonnights", type=int,  default=7, help="full moon shut down period (nights)")
 parser.add_argument("--twilight", type=int,  default=0, help="include twilight")
-parser.add_argument("--numproc", type=int,  default=16, help="include twilight")
+parser.add_argument("--numproc", type=int,  default=4, help="include twilight")
 
 print('\n\nWelcome to up.\n\n')
 
@@ -50,6 +50,7 @@ startclock       = time.time()
 
 tiles            = Table.read(args.tiles)
 tiles            = tiles[tiles['IN_DESI'] > 0]
+tiles.sort('RA')
 
 config           = desisurvey.config.Configuration()
 
@@ -87,7 +88,7 @@ if num_nights <= 0:
 hours            = np.zeros((3, num_nights))
                 
 ##  Choose same times as those solved for in ephem, but more finely sample than 1/hr due to twilight.                                                                                                                                     
-N                = 96
+N                = 48
 dt               = 24. / N
 t_obj            = np.linspace(0., 1., N + 1)
 
