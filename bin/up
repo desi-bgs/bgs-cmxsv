@@ -216,6 +216,9 @@ print('\n\n')
 toprint        = ['TILEID', 'RA', 'DEC'] + [x.upper() for x in months]
 tiles[toprint].pprint(max_width=-1)
 
+fname          = args.tiles.split('/')[-1]
+tiles.write(args.outdir + '/{}'.format(fname), format='fits', overwrite=True)
+
 papertable     = tiles['TILEID', 'RA', 'DEC']
 papertable.sort('RA')
 
