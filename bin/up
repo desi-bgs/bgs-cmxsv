@@ -7,16 +7,16 @@ import  argparse
 import  fitsio
 import  desisurvey
 import  warnings
+import  ephem
+import  numpy                    as      np
+import  astropy.units            as      u
+import  pylab                    as      pl
+import  matplotlib.pyplot        as      plt
 
 from    multiprocessing          import  Pool, Array
 from    desisurvey.utils         import  get_location
 from    desisurvey.ephem         import  get_ephem
 from    astropy                  import  log
-
-import  ephem
-import  numpy                    as      np
-import  astropy.units            as      u
-
 from    desisurvey.ephem         import  Ephemerides
 from    desisurvey.utils         import  local_noon_on_date, get_date
 from    datetime                 import  datetime, date, timedelta
@@ -30,17 +30,23 @@ from    astropy.utils.exceptions import AstropyWarning
 # IERS range warning suppression.
 warnings.filterwarnings('ignore', category=AstropyWarning, append=True)
 
+'''
+Up:  
+--  print the hours available for each program (dark, gray, bright) for a range of nights.
+--  augment the input tiles file with the hours for which each is observable, for  each month, in each program. 
+--  write a minimalist latex version of the tiles file. 
+'''
 
 parser           = argparse.ArgumentParser(usage = "{prog} [options]")
 
 parser.add_argument("--tiles", type=str, help="input tile file", default='/global/cfs/cdirs/desi/sv/bgs/tiles/phaseone/BGS_SV_30_3x_superset60_Apr2020v2.fits')
-parser.add_argument("--bright", type=int,  default=1, help="restrict to bright nights only")
+parser.add_argument("--bright", type=int,  default=0, help="solve for nights with bright time only (irrelevant when including twilight).")
 parser.add_argument("--firstday", type=str,  default=get_date(datetime.now().date().isoformat()), help="first day considered")
-parser.add_argument("--lastday", type=str,  default='2021-10-01', help="last day considered")
+parser.add_argument("--lastday", type=str,  default='2021-02-01', help="last day considered")
 parser.add_argument("--outdir", type=str, required=True, help="path to output directory.")
 parser.add_argument("--fullmoonnights", type=int,  default=7, help="full moon shut down period (nights)")
 parser.add_argument("--twilight", type=int,  default=0, help="include twilight")
-parser.add_argument("--numproc", type=int,  default=4, help="include twilight")
+parser.add_argument("--numproc", type=int,  default=4, help="number of processes in multiprocessing (~4-12)")
 
 print('\n\nWelcome to up.\n\n')
 
@@ -220,6 +226,23 @@ tiles[toprint].pprint(max_width=-1)
 fname          = args.tiles.split('/')[-1]
 tiles.write(args.outdir + '/{}'.format(fname), format='fits', overwrite=True)
 
+fig, axes      = plt.subplots(len(months), 3, figsize=(5 * len(months), 15))
+cax            = fig.add_axes([0.95, 0.11, 0.02, 0.75])
+
+for i, month in enumerate(months):
+  month        = month.upper()
+
+  for program in range(3):
+    im         = axes[i, program].scatter(tiles['RA'], tiles['DEC'], c=tiles[month][:,program], vmin=0.0, vmax=70.)
+
+for program, title in zip(range(3), ['DARK', 'GRAY', 'BRIGHT']):
+  axes[0, program].set_title(title)
+
+fig.colorbar(im, cax=cax, orientation='vertical')
+  
+pl.savefig(args.outdir + '/up.pdf')
+    
+##  Write succint tiles file as latex table. 
 papertable     = tiles['TILEID', 'RA', 'DEC']
 papertable.sort('RA')
 
