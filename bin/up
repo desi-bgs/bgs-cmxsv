@@ -13,6 +13,7 @@ import  astropy.units            as      u
 import  pylab                    as      pl
 import  matplotlib.pyplot        as      plt
 
+from    pytz                     import  timezone
 from    multiprocessing          import  Pool, Array
 from    desisurvey.utils         import  get_location
 from    desisurvey.ephem         import  get_ephem
@@ -37,9 +38,10 @@ Up:
 --  write a minimalist latex version of the tiles file. 
 '''
 
-parser           = argparse.ArgumentParser(usage = "{prog} [options]")
+parser = argparse.ArgumentParser(usage = "{prog} [options]")
 
-parser.add_argument("--tiles", type=str, help="input tile file", default='/global/cfs/cdirs/desi/sv/bgs/tiles/phaseone/BGS_SV_30_3x_superset60_Apr2020v2.fits')
+# E.g.  /global/cfs/cdirs/desi/sv/bgs/tiles/phaseone/BGS_SV_30_3x_superset60_Apr2020v2.fits
+parser.add_argument("--tiles", type=str, help="input tile file", default=None)
 parser.add_argument("--bright", type=int,  default=0, help="solve for nights with bright time only (irrelevant when including twilight).")
 parser.add_argument("--firstday", type=str,  default=get_date(datetime.now().date().isoformat()), help="first day considered")
 parser.add_argument("--lastday", type=str,  default='2021-02-01', help="last day considered")
@@ -53,10 +55,6 @@ print('\n\nWelcome to up.\n\n')
 args             = parser.parse_args()
 
 startclock       = time.time()
-
-tiles            = Table.read(args.tiles)
-tiles            = tiles[tiles['IN_DESI'] > 0]
-tiles.sort('RA')
 
 config           = desisurvey.config.Configuration()
 
@@ -76,10 +74,6 @@ bodies.remove('moon')
 
 mayall           = desisurvey.utils.get_location()
 
-##                                                                                                                                                                                                                                        
-ra               = tiles['RA']
-dec              = tiles['DEC']
-
 ## ephem table duration
 start            = datetime(year = 2019, month =  1,  day = 1)
 stop             = datetime(year = 2025, month = 12, day = 31)
@@ -98,10 +92,21 @@ N                = 48
 dt               = 24. / N
 t_obj            = np.linspace(0., 1., N + 1)
 
-##  For each tile, and each night, record the hrs visible in each program.                                                                                                                                                                 
-hrs_visible      = np.zeros(3 * len(ra) * num_nights, dtype=np.float).reshape(num_nights, len(ra), 3)
-
 months           = []
+
+if args.tiles is not None:
+    tiles            = Table.read(args.tiles)
+    tiles            = tiles[tiles['IN_DESI'] > 0]
+    tiles.sort('RA')
+
+    ra               = tiles['RA']
+    dec              = tiles['DEC']
+
+    ##  For each tile, and each night, record the hrs visible in each program.
+    hrs_visible      = np.zeros(3 * len(ra) * num_nights, dtype=np.float).reshape(num_nights, len(ra), 3)
+
+arizona          = timezone('US/Arizona') 
+fmt              = '%H:%M:%S %Z%z' 
 
 for i in range(num_nights):
     tonight      = first + timedelta(days=i)
@@ -114,11 +119,11 @@ for i in range(num_nights):
       months.append(isonoon.strftime("%B"))
     
     if fullmoon:
-      print('{}:\t   FULLMOON'.format(isonoon.isoformat()))
+      print('{}\tFULLMOON'.format(isonoon.isoformat()))
       continue
 
     if monsoon:
-      print('{}:\t   MONSOON'.format(isonoon.isoformat()))
+      print('{}\tMONSOON'.format(isonoon.isoformat()))
       continue
     
     ##  MJD for midnight on this date.                                                                                                                                                                                                    
@@ -132,9 +137,7 @@ for i in range(num_nights):
 
     if args.bright & (hours[2, i] == 0.0):
         continue
-        
-    print('{}:\t{: 6.1f} Dark\t{: 6.1f}\tGray\t{: 6.1f}\tBright.'.format(isonoon.isoformat(), hours[0, i] , hours[1, i] , hours[2, i]))
-    
+            
     row               = ephemtable.get_night(isonoon)
     
     dusk              = row['dusk']
@@ -150,6 +153,14 @@ for i in range(num_nights):
     MJD0, MJD1        = bdusk, bdawn
     LST0, LST1        = row['brightdusk_LST'], row['brightdawn_LST']
     dLST              = (LST1 - LST0) / (MJD1 - MJD0)
+
+    localdusk         = arizona.localize(Time(dusk, format='mjd').datetime).strftime(fmt)
+    localdawn         = arizona.localize(Time(dawn, format='mjd').datetime).strftime(fmt)               
+    
+    print('{}\t{}\t{}:\t{: 6.1f} Dark\t{: 6.1f}\tGray\t{: 6.1f}\tBright ({:.2f}% illumination).'.format(isonoon.isoformat(), localdusk, localdawn, hours[0, i] , hours[1, i] , hours[2, i], moonfrac))
+    
+    if args.tiles is None:
+        continue
 
     indices           = np.arange(len(ra))
     
@@ -197,13 +208,20 @@ for i in range(num_nights):
     for result in results:
       success, program, isin = result
 
-      if success:                                                                                                                                                                                                                           
+      if success:
         # [night, tile, program].                                                                                                                                                                                                           
         hrs_visible[i, isin, program] += dt   
     
 if len(months) > 12:
     raise ValueError('Lower the last day to not repeat calculation for subsequent years.')
-  
+
+if args.tiles is None:
+    endclock       = time.time()
+
+    print('\n\nDone in {:.2f} seconds.\n\n'.format(endclock - startclock))
+
+    exit(0)
+    
 for month in months:
   month        = month.upper()  
   tiles[month] = [np.zeros(3, dtype=np.float32)] * len(tiles)
@@ -224,7 +242,7 @@ toprint        = ['TILEID', 'RA', 'DEC'] + [x.upper() for x in months]
 tiles[toprint].pprint(max_width=-1)
 
 fname          = args.tiles.split('/')[-1]
-tiles.write(args.outdir + '/{}'.format(fname), format='fits', overwrite=True)
+tiles.write(args.outdir + '/up-{}'.format(fname), format='fits', overwrite=True)
 
 fig, axes      = plt.subplots(len(months), 3, figsize=(5 * len(months), 15))
 cax            = fig.add_axes([0.95, 0.11, 0.02, 0.75])
