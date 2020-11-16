@@ -45,7 +45,7 @@ parser.add_argument("--tiles", type=str, help="input tile file", default=None)
 parser.add_argument("--bright", type=int,  default=0, help="solve for nights with bright time only (irrelevant when including twilight).")
 parser.add_argument("--firstday", type=str,  default=get_date(datetime.now().date().isoformat()), help="first day considered")
 parser.add_argument("--lastday", type=str,  default='2021-02-01', help="last day considered")
-parser.add_argument("--outdir", type=str, required=True, help="path to output directory.")
+parser.add_argument("--outdir", type=str, required=False, default=None, help="path to output directory.")
 parser.add_argument("--fullmoonnights", type=int,  default=7, help="full moon shut down period (nights)")
 parser.add_argument("--twilight", type=int,  default=0, help="include twilight")
 parser.add_argument("--numproc", type=int,  default=4, help="number of processes in multiprocessing (~4-12)")
@@ -104,7 +104,10 @@ if args.tiles is not None:
 
     ##  For each tile, and each night, record the hrs visible in each program.
     hrs_visible      = np.zeros(3 * len(ra) * num_nights, dtype=np.float).reshape(num_nights, len(ra), 3)
-
+    
+    if args.outdir is None:
+      raise ValueError('Provide --outdir when solving for tile program hours (tile file provided).')
+    
 arizona          = timezone('US/Arizona') 
 fmt              = '%H:%M:%S %Z%z' 
 
