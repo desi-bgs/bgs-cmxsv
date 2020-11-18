@@ -31,7 +31,6 @@ from    astropy.utils.exceptions import AstropyWarning
 # IERS range warning suppression.
 warnings.filterwarnings('ignore', category=AstropyWarning, append=True)
 
-
 description = 'print the hours available for each program (dark, gray, bright) for a range of nights;  if provided a tiles file, augment the input tiles file with the hours for which each is observable, for  each month, in each program; write a minimalist latex version of the tiles file, all to --outdir (required if tiles file provided).'
 
 parser = argparse.ArgumentParser(usage = "{prog} [options]", description=description)
