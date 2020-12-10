@@ -5,6 +5,7 @@ import  os
 import  time
 import  argparse
 import  fitsio
+import  desiutil
 import  desisurvey
 import  warnings
 import  ephem
@@ -12,8 +13,8 @@ import  numpy                    as      np
 import  astropy.units            as      u
 import  pylab                    as      pl
 import  matplotlib.pyplot        as      plt
+import  matplotlib.patches       as      patches
 
-from    pytz                     import  timezone
 from    multiprocessing          import  Pool, Array
 from    desisurvey.utils         import  get_location
 from    desisurvey.ephem         import  get_ephem
@@ -22,11 +23,15 @@ from    desisurvey.ephem         import  Ephemerides
 from    desisurvey.utils         import  local_noon_on_date, get_date
 from    datetime                 import  datetime, date, timedelta
 from    astropy.time             import  Time, TimeDelta
-from    astropy.coordinates      import  SkyCoord, EarthLocation, AltAz
+from    astropy.coordinates      import  SkyCoord, EarthLocation, AltAz, Angle
 from    whatprogram              import  whatprogram
 from    astropy.table            import  Table
 from    astropy.io               import  ascii
-from    astropy.utils.exceptions import AstropyWarning
+from    astropy.utils.exceptions import  AstropyWarning
+from    desimodel.io             import  load_tiles
+
+
+desiutil.iers.freeze_iers()
 
 # IERS range warning suppression.
 warnings.filterwarnings('ignore', category=AstropyWarning, append=True)
@@ -43,9 +48,20 @@ parser.add_argument("--lastday", type=str,  default='2021-02-01', help="last day
 parser.add_argument("--outdir", type=str, required=False, default=None, help="path to output directory.")
 parser.add_argument("--fullmoonnights", type=int,  default=7, help="full moon shut down period (nights)")
 parser.add_argument("--twilight", type=int,  default=0, help="include twilight")
-parser.add_argument("--numproc", type=int,  default=4, help="number of processes in multiprocessing (~4-12)")
+parser.add_argument("--numproc", type=int,  default=6, help="number of processes in multiprocessing (~4-12)")
+parser.add_argument("--numpasses", default=[5,2,4], help="number of passes per program. [Dark, Gray, Bright] expected.")
+parser.add_argument("--numtilesperprogram", default=[19,19,12], help="number of tiles per program. [Dark, Gray, Bright] expected.")
+parser.add_argument("--writefits", default=0, help="write hours .fits.")
+
+#  Airmass & EBV factor of 1.53 gives dark exp. of 2720. and 1420.  Gives raw of 1780., 930.
+parser.add_argument("--darkexp", type=float,  default=1780., help="average exposure time for dark | gray.")
+parser.add_argument("--brightexp", type=float,  default=930., help="average exposure time for bright")
 
 print('\n\nWelcome to up.\n\n')
+
+# External survey.
+hectomap         = [200., 42.0, 250., 45.0]
+eboss            = [126.,  14., 169.,  29.] 
 
 args             = parser.parse_args()
 
@@ -96,14 +112,14 @@ if args.tiles is not None:
 
     ra               = tiles['RA']
     dec              = tiles['DEC']
-
+    expfac           = tiles['EXPOSEFAC']
+    
     ##  For each tile, and each night, record the hrs visible in each program.
     hrs_visible      = np.zeros(3 * len(ra) * num_nights, dtype=np.float).reshape(num_nights, len(ra), 3)
     
     if args.outdir is None:
       raise ValueError('Provide --outdir when solving for tile program hours (tile file provided).')
     
-arizona          = timezone('US/Arizona') 
 fmt              = '%H:%M:%S %Z%z' 
 
 for i in range(num_nights):
@@ -152,9 +168,9 @@ for i in range(num_nights):
     LST0, LST1        = row['brightdusk_LST'], row['brightdawn_LST']
     dLST              = (LST1 - LST0) / (MJD1 - MJD0)
 
-    localdusk         = arizona.localize(Time(dusk, format='mjd').datetime).strftime(fmt)
-    localdawn         = arizona.localize(Time(dawn, format='mjd').datetime).strftime(fmt)               
-    
+    localdusk         = Time(dusk, format='mjd', location=mayall).iso.split(' ')[-1]
+    localdawn         = Time(dawn, format='mjd', location=mayall).iso.split(' ')[-1]
+        
     print('{}\t{}\t{}:\t{: 6.1f} Dark\t{: 6.1f}\tGray\t{: 6.1f}\tBright ({:.2f}% illumination).'.format(isonoon.isoformat(), localdusk, localdawn, hours[0, i] , hours[1, i] , hours[2, i], moonfrac))
     
     if args.tiles is None:
@@ -166,7 +182,7 @@ for i in range(num_nights):
     for body in bodies:
         bdec, bra = desisurvey.ephem.get_object_interpolator(row, body, altaz=False)(midnight)
 
-        too_close = desisurvey.utils.separation_matrix([bra] * u.deg, [bdec] * u.deg, ra[indices] * u.deg, dec[indices] * u.deg, avoid_bodies[body])[0]
+        too_close = desisurvey.utils.separation_matrix([bra] * u.deg, [bdec] * u.deg, ra[indices].data * u.deg, dec[indices].data * u.deg, avoid_bodies[body])[0]
         indices   = indices[~too_close]
 
     ##  On this day, enumerate over the time samples.                                                                                                     
@@ -179,7 +195,7 @@ for i in range(num_nights):
 
         program   = whatprogram(mjd, programs, changes)
         _time     = Time(mjd, format='mjd')                                                                                                                                                                  
-        pos       = SkyCoord(ra = ra[indices] * u.degree, dec = dec[indices] * u.degree, frame='icrs').transform_to(AltAz(obstime=_time, location=mayall))
+        pos       = SkyCoord(ra = ra[indices].data * u.degree, dec = dec[indices].data * u.degree, frame='icrs').transform_to(AltAz(obstime=_time, location=mayall))
         alt       = pos.alt.degree
 
         ishigh    = alt > min_altitude
@@ -190,10 +206,10 @@ for i in range(num_nights):
         hourangle = LST - ra
 
         bdec, bra = desisurvey.ephem.get_object_interpolator(row, 'moon', altaz=False)(mjd)
-        too_close = desisurvey.utils.separation_matrix([bra] * u.deg, [bdec] * u.deg, ra[isin] * u.deg, dec[isin] * u.deg, avoid_bodies['moon'])[0]
+        too_close = desisurvey.utils.separation_matrix([bra] * u.deg, [bdec] * u.deg, ra[isin].data * u.deg, dec[isin].data * u.deg, avoid_bodies['moon'])[0]
         isin      = isin[~too_close]
 
-        airmasses = desisurvey.utils.get_airmass(_time, ra[isin] * u.deg, dec[isin] * u.deg)
+        airmasses = desisurvey.utils.get_airmass(_time, ra[isin].data * u.deg, dec[isin].data * u.deg)
         isin      = isin[airmasses < 2.0]
 
         return  True, program, isin
@@ -208,7 +224,7 @@ for i in range(num_nights):
 
       if success:
         # [night, tile, program].                                                                                                                                                                                                           
-        hrs_visible[i, isin, program] += dt   
+        hrs_visible[i, isin, program] += dt / expfac[isin]  
     
 if len(months) > 12:
     raise ValueError('Lower the last day to not repeat calculation for subsequent years.')
@@ -239,22 +255,53 @@ print('\n\n')
 toprint        = ['TILEID', 'RA', 'DEC'] + [x.upper() for x in months]
 tiles[toprint].pprint(max_width=-1)
 
-fname          = args.tiles.split('/')[-1]
-tiles.write(args.outdir + '/up-{}'.format(fname), format='fits', overwrite=True)
+if args.writefits:
+  fname          = args.tiles.split('/')[-1]
+  tiles.write(args.outdir + '/up-{}'.format(fname), format='fits', overwrite=True)
 
-fig, axes      = plt.subplots(len(months), 3, figsize=(5 * len(months), 15))
+fig, axes      = plt.subplots(len(months), 3, figsize=(4.5 * len(months), 15))
 cax            = fig.add_axes([0.95, 0.11, 0.02, 0.75])
 
 for i, month in enumerate(months):
   month        = month.upper()
+  imonth       = datetime.strptime(month, "%B").month
+  
+  # https://www.noao.edu/kpno/skycal/cal2020.html; [.hms, .deg]
+  MINLST       = Time('2020-{:0d}-01T05:00:00'.format(imonth), format='isot', location=mayall).sidereal_time('apparent').deg  
+  MAXLST       = Time('2020-{:0d}-28T10:00:00'.format(imonth), format='isot', location=mayall).sidereal_time('apparent').deg
+  
+  for program, exptime in zip(range(3), [args.darkexp, args.darkexp, args.brightexp]):
+    # seconds to hours.
+    exptime   /= 3600.
 
-  for program in range(3):
-    im         = axes[i, program].scatter(tiles['RA'], tiles['DEC'], c=tiles[month][:,program], vmin=0.0, vmax=70.)
+    observable = tiles[month][:,program] >= exptime
+    im         = axes[i, program].scatter(tiles['RA'][observable], tiles['DEC'][observable], c=tiles[month][observable,program] / tiles[month][observable,program].max(),\
+                                          vmin=0.0, vmax=1., label=month + ': {:.1f} (nominal) hrs max.'.format(tiles[month][observable,program].max()), s=2)
 
-for program, title in zip(range(3), ['DARK', 'GRAY', 'BRIGHT']):
-  axes[0, program].set_title(title)
+    axes[i, program].axvline(x=MINLST, ymin=0.0, ymax=1.0, c='k', lw=0.1)
+    axes[i, program].axvline(x=MAXLST, ymin=0.0, ymax=1.0, c='k', lw=0.1)
 
-fig.colorbar(im, cax=cax, orientation='vertical')
+    # Add external survey footprint.
+
+    for region in [hectomap, eboss]:
+        ra_min, dec_min, ra_max, dec_max = region[0], region[1], region[2], region[3],
+    
+        region = patches.Rectangle((ra_min, dec_min), (ra_max - ra_min), (dec_max - dec_min), linewidth=1, facecolor='k', alpha=0.25)
+        axes[i, program].add_patch(region)
+    
+    axes[i, program].set_xlim(360.,   0.0)
+    axes[i, program].set_ylim(-20., 100.0)
+    
+    axes[i, program].legend(frameon=False, loc=1)
+
+for program, title, exptime, numpass, numtile in zip(range(3), ['DARK', 'GRAY', 'BRIGHT'], [args.darkexp, args.darkexp, args.brightexp], args.numpasses, args.numtilesperprogram):
+  axes[0,  program].set_title(title + ': {:.1f} min. x {:d} passes x {:d} tiles = {:.1f} hr.'.format(exptime / 60., numpass, numtile, (exptime / 60.) * numpass * numtile / 60.), fontsize=12)
+  axes[-1, program].set_xlabel('Right ascension [deg.]', fontsize=12)
+
+for i, month in enumerate(months):
+  axes[i, 0].set_ylabel('Declination [deg.]', fontsize=12)
+
+fig.colorbar(im, cax=cax, orientation='vertical', label='Relative hours visible')
   
 pl.savefig(args.outdir + '/up.pdf')
     
