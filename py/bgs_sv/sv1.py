@@ -90,8 +90,8 @@ def get_obs_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=1
         specs = np.arange(10, dtype=int).astype(str)
 
     for camera in ["b", "r", "z"]:
-        norm_cam    = np.zeros(len(waves[camera]]))
-        sky_cam     = np.zeros(len(waves[camera]]))
+        norm_cam    = np.zeros(len(waves[camera]))
+        sky_cam     = np.zeros(len(waves[camera]))
 
         for spec in specs:
             if ftype == "data":
