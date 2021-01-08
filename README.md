@@ -12,7 +12,7 @@ pip install .
 
 If you're on NERSC jupyter notebook run the following in the notebook 
 ```
-!python -m pip install git+https://github.com/desi-bgs/bgs-cmxsv.git
+!pip install git+https://github.com/desi-bgs/bgs-cmxsv.git --upgrade --user
 ```
 
 ## usage
