@@ -11,10 +11,12 @@ import fitsio
 import numpy as np 
 # -- astropy -- 
 from astropy.table import Table
+import astropy.units as units
 import astropy.constants as constants
 
 
 assert os.environ['NERSC_HOST'] == 'cori'
+assert os.environ['DESIMODEL'] != ''
 
 
 def sv1_exposures(): 
@@ -72,7 +74,7 @@ def get_obs_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=1
     fiber_area_arcsec2 = (np.pi * (desi["fibers"]["diameter_arcsec"] / 2.0) ** 2)  # fiber
 
     # load spectrograph throughput and interpolate to wavelength 
-    dir_thru = os.path.join(os.environ['DESIMODEL'], '/data/throughput/') 
+    dir_thru = os.path.join(os.getenv("DESIMODEL"), 'data', 'throughput') 
      
     thru = {}
     for camera in ['b', 'r', 'z']: 
@@ -99,7 +101,7 @@ def get_obs_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=1
                 raise NotImplementedError
             elif ftype == "model":
                 fn = os.path.join(reduxdir, "exposures", night, expid, 
-                        "sky-%s%i-%s.fits" % (camera, spec, expid),)
+                        "sky-%s%s-%s.fits" % (camera, spec, expid),)
                 if not os.path.isfile(fn):
                     print("Skipping non-existent %s" % fn)
                     continue 
