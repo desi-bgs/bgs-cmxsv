@@ -21,15 +21,15 @@ def sv1_exposures():
     astropy table. `/global/homes/m/mjwilson/desi/SV1/sv1-exposures.fits` was
     compiled by Mike W. 
     '''
-    fexp = '/global/homes/m/mjwilson/desi/SV1/sv1-exposures.fits'
+    fexp = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dat', 'sv1-exposures.fits')
 
-    return Table.read('sv1-exposures.fits')
+    return Table.read(fexp)
 
 
 def sv1_bright_exposures(): 
     ''' read in only the bright time SV1 exposures.
     '''
-    exps = sv1_exposure()
+    exps = sv1_exposures()
     
     # calculate bright limit 
     nominal_dark = 21.07

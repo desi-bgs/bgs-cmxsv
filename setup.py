@@ -11,5 +11,7 @@ if __name__ == "__main__":
         packages=['bgs_sv'],
         package_dir={'': 'py'}, 
         install_requires = ['numpy', 'matplotlib', 'scipy'],
+        include_package_data=True,
+        package_data={'bgs_sv': ['dat/*.fits', 'dat/*.txt']},
         zip_safe=True,
     )
