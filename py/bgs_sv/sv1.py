@@ -7,6 +7,7 @@ module for read in useful SV1 data
 '''
 import os 
 import yaml
+import fitsio
 import numpy as np 
 # -- astropy -- 
 from astropy.table import Table

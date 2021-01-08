@@ -10,7 +10,7 @@ if __name__ == "__main__":
         description='python package for DESI BGS CMX + SV efforts',
         packages=['bgs_sv'],
         package_dir={'': 'py'}, 
-        install_requires = ['numpy', 'matplotlib', 'scipy'],
+        install_requires = ['numpy', 'matplotlib', 'scipy', 'fitsio'],
         include_package_data=True,
         package_data={'bgs_sv': ['dat/*.fits', 'dat/*.txt']},
         zip_safe=True,
