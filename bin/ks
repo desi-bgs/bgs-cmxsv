@@ -49,7 +49,7 @@ parser.add_argument("--mie_rhoexponent", default=0.025, type=float)
 args              = parser.parse_args()
 
 def scattering(rho):
-    return 10.**(args.ral_exponent - rho * args.ral_rhoexponent) + (1.06 + np.cos(rho * np.pi / 180.)**2.) * args.mie_amplitude
+    return 10.**(args.mie_exponent - rho * args.mie_rhoexponent) + (1.06 + np.cos(rho * np.pi / 180.)**2.) * args.ral_amplitude
 
 def test_scattering():
     # Fig. 1 of https://iopscience.iop.org/article/10.1086/132921/pdf                                                                                                                                                            
