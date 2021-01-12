@@ -14,8 +14,9 @@ import  numpy                    as      np
 import  astropy.units            as      u
 import  pylab                    as      pl
 import  matplotlib.pyplot        as      plt
-import  specsim.simulator
+import  specsim.simulator        as      simulator
 
+from    astropy.table            import  Table
 from    specsim                  import  config
 from    scipy                    import  ndimage
 from    multiprocessing          import  Pool, Array
@@ -25,7 +26,32 @@ from    astropy.coordinates      import  SkyCoord, EarthLocation, AltAz
 from    speclite                 import  filters
 from    desispec.interpolation   import  resample_flux
 from    specsim.atmosphere       import  krisciunas_schaefer, Moon
+from    get_sky                  import  get_sky
+from    pkg_resources            import  resource_filename
 
+
+start             = time.time()
+
+# specsim.                                                                                                                                                                                                                              
+config            = specsim.config.load_config('desi')
+simulator         = specsim.simulator.Simulator('desi')
+
+simulator.simulate()
+
+vfilter           = filters.load_filters('bessell-V')
+rfilter           = filters.load_filters('decam2014-r')
+
+##  Need extinction of lunar flux in the V band.                                                                                                                                                                                             
+# Note:  scipy interp1d to array([3550. , 3550.1, 3550.2, ..., 9849.8, 9849.9, 9850.]);                                                                                                                                                      
+_solar_flux       = config.load_table(config.atmosphere.moon, 'flux')
+solar_wave        = config.wavelength
+
+_darksky_flux     = config.load_table(config.atmosphere.sky,  'surface_brightness')
+_darksky_flux     = _darksky_flux['dark']
+darksky_wave      = config.wavelength
+
+_extinct          = config.load_table(config.atmosphere.extinction, 'extinction_coefficient')
+extinct_wave      = config.wavelength.value
 
 # Only needed to populate lunar conditions for SV0 exposure summary. 
 mayall            = get_location()
@@ -36,6 +62,7 @@ emayall.lat       = ephem.degrees(mayall.lat.value * np.pi / 180.)
 emayall.elevation = mayall.height.value
 
 moon              = ephem.Moon()
+sun               = ephem.Sun()
 
 parser            = argparse.ArgumentParser(usage = "{prog} [options]", description='')
 
@@ -44,12 +71,13 @@ parser.add_argument("--mjd", type=str, default=59206.137, help="MJD to evaluate.
 parser.add_argument("--ra", type=int,  default=5.0, help="Right ascension.")
 parser.add_argument("--dec", type=str,  default=28.0, help='Declination.')
 parser.add_argument("--zenith_dark_V", type=str,  default=21.587, help="Zenith (annual mean) dark sky [mags / sq. arcsec.]")
+parser.add_argument("--exps_path", type=str, default='../py/bgs-cmxsv/dat/sv1-exposures.fits')
 parser.add_argument("--ral_amplitude", default=10.**5.36, type=float)
 parser.add_argument("--mie_exponent", default=6.15, type=float)
 parser.add_argument("--mie_rhoexponent", default=0.025, type=float)
 # parser.add_argument("--k", type=str,  default=0.172, help="Magnitudes per airmass")
-# parser.add_argument("--darksky_path", default='../dat/spec-sky.dat')                                                                                                                                                                      
-# parser.add_argument("--solarspec_path", default='../dat/solarspec.txt')                                                                                                                                                                    
+# parser.add_argument("--darksky_path", default='../dat/spec-sky.dat')                                                                                                                                                                     
+# parser.add_argument("--solarspec_path", default='../dat/solarspec.txt')                                                                                                                                                                  
 # parser.add_argument("--kpnoxtinct_path", default='../dat/ZenithExtinction-KPNO.dat')
 
 args              = parser.parse_args()
@@ -58,8 +86,8 @@ def XX(zd):
     # Airmass at given zenith distance. 
     return  (1. - 0.96 * np.sin(zd * np.pi / 180.)**2.)**-0.5
 
-def scattering(rho):
-    return  10.**(args.mie_exponent - rho * args.mie_rhoexponent) + (1.06 + np.cos(rho * np.pi / 180.)**2.) * args.ral_amplitude
+def scattering(rho, mie_exponent=args.mie_exponent, mie_rhoexponent=args.mie_rhoexponent, ral_amplitude=args.ral_amplitude):
+    return  10.**(mie_exponent - rho * mie_rhoexponent) + (1.06 + np.cos(rho * np.pi / 180.)**2.) * ral_amplitude
 
 def test_scattering():
     # Fig. 1 of https://iopscience.iop.org/article/10.1086/132921/pdf                                                                                                                                                            
@@ -74,172 +102,269 @@ def test_scattering():
     pl.show()
 
 # test_scattering()
+
+def ks(mjd, ra, dec, spec_vmag=None, label='', external={}, simulator=None, summary=False, plot=False):
+    t                 = Time(mjd, format='mjd', scale='utc')
+    emayall.date      = t.iso
+
+    pos               = SkyCoord(ra = ra * u.degree, dec = dec * u.degree, frame='icrs').transform_to(AltAz(obstime=t, location=mayall))
+    alt               = pos.alt.degree
+    az                = pos.az.degree
+    zd                = 90. - alt
+
+    sun.compute(emayall)
+    moon.compute(emayall)
+
+    sun_alt           = sun.alt * (180. / np.pi)
+    sun_sep           = desisurvey.utils.separation_matrix([ra] * u.deg, [dec] * u.deg, [sun.ra] * u.deg, [sun.dec] * u.deg)[0][0].value
+
+    moon_alt          = moon.alt * (180. / np.pi)
+    moon_frac         = moon.moon_phase
+    moon_sep          = desisurvey.utils.separation_matrix([ra] * u.deg, [dec] * u.deg, [moon.ra] * u.deg, [moon.dec] * u.deg)[0][0].value
+    moon_phase        = 180. * np.arccos(2.*moon_frac - 1.) / np.pi # deg.
+    moon_zd           = (90. - moon_alt)
     
-t                 = Time(args.mjd, format='mjd', scale='utc')
-emayall.date      = t.iso
+    X                 = XX(zd)
+    moon_X            = XX(moon_zd)
 
-pos               = SkyCoord(ra = args.ra * u.degree, dec = args.dec * u.degree, frame='icrs').transform_to(AltAz(obstime=t, location=mayall))
-alt               = pos.alt.degree
-az                = pos.az.degree
-zd                = 90. - alt
+    if simulator is not None:
+        # config.atmosphere.airmass                          = X
+        # config.atmosphere.moon.constants.moon_zenith       = moon_zd * u.deg
+        # config.atmosphere.moon.constants.separation_angle  = moon_sep * u.deg
+        # config.atmosphere.moon.constants.moon_phase        = moon_phase / 180.
 
-moon.compute(emayall)
-
-moon_alt          = moon.alt * (180. / np.pi)
-moon_frac         = moon.moon_phase
-moon_sep          = desisurvey.utils.separation_matrix([args.ra] * u.deg, [args.dec] * u.deg, [moon.ra] * u.deg, [moon.dec] * u.deg)[0][0].value
-moon_phase        = 180. * np.arccos(2.*moon_frac - 1.) / np.pi # deg.
-moon_zd           = (90. - moon_alt)
+        # simulator                                          = specsim.simulator.Simulator(config)
+        
+        simulator.atmosphere.airmass                         = X
+        simulator.atmosphere.moon.moon_zenith                = moon_zd * u.deg 
+        simulator.atmosphere.moon.separation_angle           = moon_sep * u.deg
+        simulator.atmosphere.moon.moon_phase                 = moon_phase / 180. 
+        
+        simulator.simulate()
+        
+    solar_flux                 = np.array(_solar_flux, copy=True) * u.erg / (u.cm ** 2 * u.s * u.angstrom)
+    darksky_flux               = np.array(_darksky_flux, copy=True) * u.erg / (u.cm ** 2 * u.s * u.angstrom * u.arcsec ** 2)
+    extinct                    = _extinct
     
-X                 = XX(zd)
-moon_X            = XX(moon_zd)
+    # Normalise solar spectrum to zenith dark V.
+    solar_pad, solarwave_pad   = vfilter.pad_spectrum(solar_flux, solar_wave, method="zero")
 
-##  specsim.
-config                                            = specsim.config.load_config('desi')
+    # Normalize solar to zenith_dark_V [u.erg / (u.cm ** 2 * u.s * u.angstrom]
+    vmag                       = vfilter.get_ab_magnitudes(solar_pad, solarwave_pad).as_array()[0][0]
+    solar_flux                *= 10**(-(args.zenith_dark_V - vmag) / 2.5)  # [erg / angstrom / s / cm**2 / arcsec**2].
 
-config.atmosphere.airmass                         = X
-config.atmosphere.moon.constants.moon_zenith      = moon_zd * u.deg
-config.atmosphere.moon.constants.separation_angle = moon_sep * u.deg
-config.atmosphere.moon.constants.moon_phase       = moon_phase / 180.
+    ## Calculate mag. due to extinction of lunar spectrum in V band. 
+    esolar_flux                = 10.**(-extinct / 2.5) * solar_flux
+    esolar_pad, esolarwave_pad = vfilter.pad_spectrum(esolar_flux, solar_wave, method="zero")
+    extinct_dv                 = vfilter.get_ab_magnitudes(esolar_pad, esolarwave_pad).as_array()[0][0]
 
-simulator                                         = specsim.simulator.Simulator(config)
-simulator.simulate()
+    ## Compare to simulator.atmosphere.moon.vband_extinction
+    extinct_dv                -= args.zenith_dark_V
 
-vfilter                  = filters.load_filters('bessell-V')
-rfilter                  = filters.load_filters('decam2014-r')
+    zenith_dark_B            = 34.08 * np.exp(20.7233 - 0.92104 * args.zenith_dark_V)
 
-##  Need extinction of lunar flux in the V band.
-# Note:  scipy interp1d to array([3550. , 3550.1, 3550.2, ..., 9849.8, 9849.9, 9850.]);  
-solar_flux               = config.load_table(config.atmosphere.moon, 'flux')
-solar_wave               = config.wavelength
+    B0                       = zenith_dark_B * 10.**(-0.4 * extinct_dv * (X - 1.)) * X
 
-darksky_flux             = config.load_table(config.atmosphere.sky,  'surface_brightness')
-darksky_flux             = darksky_flux['dark']
-darksky_wave             = config.wavelength
+    # V dark sky at given airmass [mags].                                                                                                                                                                                                
+    # X_dark_V               = (20.7233 - np.log(B0 / 34.08)) / 0.92194                                                                                                                                                                    
+    darksky_flux            *= 10 ** (-extinct * X / 2.5)
 
-extinct                  = config.load_table(config.atmosphere.extinction, 'extinction_coefficient')
-extinct_wave             = config.wavelength.value
+    ## Scattering function. 
+    frho                     = scattering(moon_sep)
 
-darksky_flux            *= 10 ** (-extinct * X / 2.5)
+    mstar                    = -12.73 + 0.026 * np.abs(moon_phase) + 4.e-9 * moon_phase**4. 
+    Istar                    = 10.**(-0.4 * (16.57 + mstar))
 
-# Normalise solar spectrum to zenith dark V.                                                                                                                                                                                                 
-solar_pad, solarwave_pad   = vfilter.pad_spectrum(solar_flux, solar_wave, method="zero")
+    # KS 'k' matched to the V band extinction calculated above. 
+    Bmoon                    = (frho * Istar * (1. - 10.**(-0.4 * extinct_dv * X))) * 10**(-0.4 * extinct_dv * moon_X)
 
-# Normalize solar to zenith_dark_V [u.erg / (u.cm ** 2 * u.s * u.angstrom]
-vmag                       = vfilter.get_ab_magnitudes(solar_pad, solarwave_pad).as_array()[0][0]
-solar_flux                *= 10**(-(args.zenith_dark_V - vmag) / 2.5)  # [erg / angstrom / s / cm**2 / arcsec**2].
+    # dV                     = -2.5 * np.log10((Bmoon + B0) / B0)
+    # V                      = args.zenith_dark_V + dV
 
-## Calculate mag. due to extinction of lunar spectrum in V band. 
-esolar_flux                = 10.**(-extinct / 2.5) * solar_flux
-esolar_pad, esolarwave_pad = vfilter.pad_spectrum(esolar_flux, solar_wave, method="zero")
-extinct_dv                 = vfilter.get_ab_magnitudes(esolar_pad, esolarwave_pad).as_array()[0][0]
+    # Connie's conversion.  Note:  Lunar only !!
+    # Convert from nanoLamberts to mag / arcsec**2 using eqn.19 of
+    # Garstang, "Model for Artificial Night-Sky Illumination",
+    # PASP, vol. 98, Mar. 1986, p. 364 (http://dx.doi.org/10.1086/131768)
+    V                        = (20.7233 - np.log(Bmoon / 34.08)) / 0.92104
 
-## Compare to simulator.atmosphere.moon.vband_extinction
-extinct_dv                -= args.zenith_dark_V
+    if spec_vmag is not None:
+        if simulator.atmosphere.moon.scattered_V is not None:
+            assert  np.allclose(V, simulator.atmosphere.moon.scattered_V.value)
+                            
+        # Should subtract dark sky?
+        spec_Bmoon = 34.08 * np.exp(20.7233 - 0.92104 * spec_vmag)
+        spec_frho  = spec_Bmoon / Istar / (1. - 10.**(-0.4 * extinct_dv * X)) / 10**(-0.4 * extinct_dv * moon_X) 
 
-## Scattering function. 
-frho                     = scattering(moon_sep)
+        return  moon_sep, sun_alt, spec_frho
+        
+    # Differential extinction between airmasses.
+    extinct                  = (10. ** (-extinct * moon_X / 2.5) * (1. - 10. ** (-extinct * X / 2.5)))
+    solar_flux              *= extinct
+    
+    solar_pad, solarwave_pad = vfilter.pad_spectrum(solar_flux, solar_wave, method="zero")
+    vmag                     = vfilter.get_ab_magnitudes(solar_pad, solarwave_pad).as_array()[0][0]
 
-mstar                    = -12.73 + 0.026 * np.abs(moon_phase) + 4.e-9 * moon_phase**4. 
-Istar                    = 10.**(-0.4 * (16.57 + mstar))
+    # Normalize to the lunar V mag. calculated above. 
+    solar_flux              *= 10**(-(V - vmag) / 2.5)
 
-# KS 'k' matched to the V band extinction calculated above. 
-Bmoon                    = (frho * Istar * (1. - 10.**(-0.4 * extinct_dv * X))) * 10**(-0.4 * extinct_dv * moon_X)
+    # Normalise solar spectrum to zenith dark V.
+    dsky_pad, dskywave_pad   = rfilter.pad_spectrum(darksky_flux, darksky_wave, method="zero")
 
-zenith_dark_B            = 34.08 * np.exp(20.7233 - 0.92104 * args.zenith_dark_V)
+    # Normalize to Dark Sky Zenith V [u.erg / (u.cm ** 2 * u.s * u.angstrom]
+    rmag                     = rfilter.get_ab_magnitudes(dsky_pad * u.arcsec ** 2, dskywave_pad).as_array()[0][0]
+    darksky_flux            *= 10**(-(21.07 - rmag) / 2.5)  # [erg / angstrom / s / cm**2 / arcsec**2]. 
+    darksky_flux            *= 1.e17
+    
+    # Check dark sky v. 
+    dsky_pad, dskywave_pad   = vfilter.pad_spectrum(1.e-17 * darksky_flux, darksky_wave, method="zero")
+    dsky_vmag                = vfilter.get_ab_magnitudes(dsky_pad * u.arcsec ** 2, dskywave_pad).as_array()[0][0]
 
-B0                       = zenith_dark_B * 10.**(-0.4 * extinct_dv * (X - 1.)) * X
+    # Calculate dark sky r. 
+    dsky_pad, dskywave_pad   = rfilter.pad_spectrum(1.e-17 * darksky_flux, darksky_wave, method="zero")
+    dsky_rmag                = rfilter.get_ab_magnitudes(dsky_pad * u.arcsec ** 2, dskywave_pad).as_array()[0][0]
 
-# V dark sky at given airmass [mags]. 
-X_dark_V                 = (20.7233 - np.log(B0 / 34.08)) / 0.92194
+    # Add lunar to dark sky. 
+    sky_flux                 = 1.e-17 * np.array(darksky_flux) + np.array(solar_flux)
+    sky_flux                *= u.erg / (u.cm ** 2 * u.s * u.angstrom)
 
-# dV                     = -2.5 * np.log10((Bmoon + B0) / B0)
-# V                      = args.zenith_dark_V + dV
+    # Calulate total (lunar + dark) V.
+    sky_pad, skywave_pad     = vfilter.pad_spectrum(sky_flux, solar_wave, method="zero")
+    vmag                     = vfilter.get_ab_magnitudes(sky_pad, skywave_pad).as_array()[0][0]
 
-# Connie's conversion.  Note:  Lunar only !!
-# Convert from nanoLamberts to mag / arcsec**2 using eqn.19 of
-# Garstang, "Model for Artificial Night-Sky Illumination",
-# PASP, vol. 98, Mar. 1986, p. 364 (http://dx.doi.org/10.1086/131768)
-V                        = (20.7233 - np.log(Bmoon / 34.08)) / 0.92104
+    # Calulate total (lunar + dark) r.
+    sky_pad, skywave_pad     = rfilter.pad_spectrum(sky_flux, solar_wave, method="zero")
+    rmag                     = rfilter.get_ab_magnitudes(sky_pad, skywave_pad).as_array()[0][0]
 
-# Differential extinction between airmasses.
-extinct                  = (10. ** (-extinct * moon_X / 2.5) * (1. - 10. ** (-extinct * X / 2.5)))
-solar_flux              *= extinct
+    if summary:
+        print('\n\n')
+        print('MJD:  {} ({})'.format(mjd, t.iso))
+        print('\n')
+        print('RA:  {:.4f}'.format(ra))
+        print('DEC:  {:.4f}'.format(dec))
+        print('\n')
+        print('Alt.:  {:.2f}'.format(alt))
+        print('Az.:  {:.2f}'.format(az))
+        print('Zd.:  {:.2f}'.format(zd))
+        print('\n')
+        print('Airmass: {:.3f} ({:.3f})'.format(X, desisurvey.utils.get_airmass(t, ra * u.deg, dec * u.deg)))
+        print('\n')
+        print('Zenith dark sky BZEN: {:.3f} [nanoLamberts]'.format(zenith_dark_B))
+        print('Zenith dark sky V: {:.3f} [mags. per sq. arcsec.]'.format(args.zenith_dark_V))
+        # print('ZD     dark sky V: {:.3f} [mags. per sq. arcsec.]'.format(X_dark_V))
+        print('ZD     dark sky r: {:.3f} [mags. per sq. arcsec.]'.format(dsky_rmag))
+        print('\n')
+        print('Moon alt.: {:.3f} ({:.3f})'.format(moon_alt, moon_zd))
+        print('Moon frac.: {:.6f}'.format(moon_frac))
+        print('Moon phase: {:.2f}'.format(moon_phase))
+        print('Moon sep.: {:.3f}'.format(moon_sep))
+        print('\n')
+        print('Atmos. extinction in the V band:  {:.6f} [mags. per airmass]'.format(extinct_dv))
+        print('\n')
+        # print('dV: {:.2f} [magnitudes per sq. arcsecond]'.format(dV))
+        # print('\n')
+        
+        if simulator is not None:
+            print(' V: {:.6f} ({:.6f}) [magnitudes per sq. arcsecond]'.format(V, simulator.atmosphere.moon.scattered_V)) 
 
-solar_pad, solarwave_pad = vfilter.pad_spectrum(solar_flux, solar_wave, method="zero")
-vmag                     = vfilter.get_ab_magnitudes(solar_pad, solarwave_pad).as_array()[0][0]
+        else:
+            print(' V: {:.6f} [magnitudes per sq. arcsecond]'.format(V)) 
+            
+        print('r: {:.3f} [magnitudes per sq. arcsecond]'.format(rmag))
+        print('\n\n')
 
-# Normalize to the lunar V mag. calculated above. 
-solar_flux              *= 10**(-(V - vmag) / 2.5)
+    if plot:
+        pl.clf()
+        
+        plt.fill_between(vfilter._responses[0]._wavelength, 10. * vfilter._responses[0].response, alpha=0.25)
+        plt.fill_between(rfilter._responses[0]._wavelength, 10. * rfilter._responses[0].response, alpha=0.25)
 
-# Normalise solar spectrum to zenith dark V.
-dsky_pad, dskywave_pad   = vfilter.pad_spectrum(darksky_flux, darksky_wave, method="zero")
+        pl.plot(solar_wave, 1.e17 * sky_flux, lw=0.25, label='Total (r = {:.3f});  {}'.format(rmag, label), alpha=0.5)
+        pl.plot(solar_wave, 1.e17 * solar_flux, label='Lunar', alpha=0.2)
+        pl.plot(solar_wave, darksky_flux, c='k', alpha=.2, lw=0.5, label='Dark')
+    
+        for key in external.keys():
+            pl.plot(external[key][0], external[key][1], label=key)
+        
+        pl.legend(frameon=False, loc=2)
+        
+        pl.xlabel('Angstroms')
+        pl.ylabel('[10$^{-17}$ erg / angstrom / s / cm$^2$ / arcsec$^2$]')
+    
+        pl.xlim(3500., 8.e3)
+        pl.ylim(0.0, 10.0)
+    
+        pl.show()
 
-# Normalize to Dark Sky Zenith V [u.erg / (u.cm ** 2 * u.s * u.angstrom]
-# vmag                   = vfilter.get_ab_magnitudes(dsky_pad * u.arcsec ** 2, dskywave_pad).as_array()[0][0]
-# darksky_flux          *= 10**(-(X_dark_V - vmag) / 2.5)  # [erg / angstrom / s / cm**2 / arcsec**2]. 
+    return  rmag
 
-# Check dark sky v. 
-dsky_pad, dskywave_pad   = vfilter.pad_spectrum(1.e-17 * darksky_flux, darksky_wave, method="zero")
-dsky_vmag                = vfilter.get_ab_magnitudes(dsky_pad * u.arcsec ** 2, dskywave_pad).as_array()[0][0]
+## 
+##  simulator  = ks(args.mjd, args.ra, args.dec)
+    
+##
+conditions     = Table.read(args.exps_path)
+nominal_dark_r = 21.07
+dmab           = -2.5 * np.log10(2.5)
 
-# Calculate dark sky r. 
-dsky_pad, dskywave_pad   = rfilter.pad_spectrum(1.e-17 * darksky_flux, darksky_wave, method="zero")
-dsky_rmag                = rfilter.get_ab_magnitudes(dsky_pad * u.arcsec ** 2, dskywave_pad).as_array()[0][0]
+bright_lim     = nominal_dark_r + dmab
 
-# Add lunar to dark sky. 
-sky_flux                 = 1.e-17 * np.array(darksky_flux) + np.array(solar_flux)
-sky_flux                *= u.erg / (u.cm ** 2 * u.s * u.angstrom)
+brite_conds    = conditions[conditions['GFA_SKY_MAG_AB_MED'] <= bright_lim]
 
-# Calulate total (lunar + dark) V.
-sky_pad, skywave_pad     = vfilter.pad_spectrum(sky_flux, solar_wave, method="zero")
-vmag                     = vfilter.get_ab_magnitudes(sky_pad, skywave_pad).as_array()[0][0]
+def process_one(cond):
+    mjdobs  = cond['MJDOBS']
+    tilera  = cond['TILERA']
+    tiledec = cond['TILEDEC']
+    spec_r  = cond['SPECMODEL_SKY_RMAG_AB']
 
-# Calulate total (lunar + dark) r.
-sky_pad, skywave_pad     = rfilter.pad_spectrum(sky_flux, solar_wave, method="zero")
-rmag                     = rfilter.get_ab_magnitudes(sky_pad, skywave_pad).as_array()[0][0]
+    return  ks(mjdobs, tilera, tiledec)
 
-print('\n\n')
-print('MJD:  {} ({})'.format(args.mjd, t.iso))
-print('\n')
-print('RA:  {:.4f}'.format(args.ra))
-print('DEC:  {:.4f}'.format(args.dec))
-print('\n')
-print('Alt.:  {:.2f}'.format(alt))
-print('Az.:  {:.2f}'.format(az))
-print('Zd.:  {:.2f}'.format(zd))
-print('\n')
-print('Airmass: {:.3f} ({:.3f})'.format(X, desisurvey.utils.get_airmass(t, args.ra * u.deg, args.dec * u.deg)))
-print('\n')
-print('Zenith dark sky BZEN: {:.3f} [nanoLamberts]'.format(zenith_dark_B))
-print('Zenith dark sky V: {:.3f} [mags. per sq. arcsec.]'.format(args.zenith_dark_V))
-print('ZD     dark sky V: {:.3f} [mags. per sq. arcsec.]'.format(X_dark_V))
-print('ZD     dark sky r: {:.3f} [mags. per sq. arcsec.]'.format(dsky_rmag))
-print('\n')
-print('Moon alt.: {:.3f} ({:.3f})'.format(moon_alt, moon_zd))
-print('Moon frac.: {:.6f}'.format(moon_frac))
-print('Moon phase: {:.2f}'.format(moon_phase))
-print('Moon sep.: {:.3f}'.format(moon_sep))
-print('\n')
-print('Atmos. extinction in the V band:  {:.6f} [mags. per airmass]'.format(extinct_dv))
-print('\n')
-#print('dV: {:.2f} [magnitudes per sq. arcsecond]'.format(dV))
-#print('\n')
-print(' V: {:.6f} ({:.6f}) [magnitudes per sq. arcsecond]'.format(V, vmag))
-print(' r: {:.3f} [magnitudes per sq. arcsecond]'.format(rmag))
-print('\n\n')
+'''
+with Pool(8) as p:
+    # ordered (on receipt, not production).
+    results = p.map(process_one, brite_conds)
+'''
 
-plt.fill_between(vfilter._responses[0]._wavelength, 10. * vfilter._responses[0].response, alpha=0.25)
-plt.fill_between(rfilter._responses[0]._wavelength, 10. * rfilter._responses[0].response, alpha=0.25)
+end = time.time()
 
-pl.plot(solar_wave, 1.e17 * darksky_flux, c='k', alpha=0.5, lw=0.25, label='Dark')
-pl.plot(solar_wave, 1.e17 * solar_flux, label='Lunar')
-pl.plot(solar_wave, 1.e17 * sky_flux, lw=0.25, label='Total')
-pl.legend(frameon=False, loc=2)
-pl.xlabel('Angstroms')
-pl.ylabel('[10$^{-17}$ erg / angstrom / s / cm$^2$ / arcsec$^2$]')
+print('Done KS in {:.6f} seconds.'.format(end - start))
 
-pl.xlim(3500., 1.e4)
-pl.ylim(0.0, 15.0)
+rhos = np.arange(5., 180., 5.)
+
+pl.plot(rhos, np.log10(scattering(rhos)), 'k-')
+pl.plot(rhos, np.log10(scattering(rhos, mie_exponent=5.5401, mie_rhoexponent=0.00561, ral_amplitude=458173.54)), c='c')
+
+frho_path = resource_filename('bgs-cmxsv', 'dat/sv1_frho.txt')
+
+if os.path.exists(frho_path):
+    print('Overwriting {}.'.format(frho_path))
+ 
+    os.system('rm {}'.format(frho_path))
+
+frho_txt  = open(frho_path, "a")
+
+for i, cond in enumerate(brite_conds):
+    print('Solving for {} of {}'.format(i, len(brite_conds)))
+
+    # print(ks(cond['MJDOBS'], cond['TILERA'], cond['TILEDEC']))
+    
+    # [erg / angstrom / s / cm**2 / arcsec**2]
+    wave, sky, spec_vmag, spec_rmag, vmag_nodark, rmag_nodark = get_sky(cond['NIGHT'], '{:08d}'.format(cond['EXPID']), cond['EXPTIME'], 'model', redux="daily", smoothing=0., specsim_darksky=True)
+    
+    moon_sep, sun_alt, spec_frho        = ks(cond['MJDOBS'], cond['TILERA'], cond['TILEDEC'], spec_vmag=spec_vmag,   simulator=simulator)
+    moon_sep, sun_alt, spec_frho_nodark = ks(cond['MJDOBS'], cond['TILERA'], cond['TILEDEC'], spec_vmag=vmag_nodark, simulator=simulator)
+
+    # ks(cond['MJDOBS'], cond['TILERA'], cond['TILEDEC'], label='GFA r: {:.3f}'.format(cond['SPECMODEL_SKY_RMAG_AB']), external={'spec': (wave, 1.e17 * sky)})
+
+    frho_txt.write("{:.6f}    {:.6f}    {:.6f}    {:.6f}\n".format(moon_sep, sun_alt, np.log10(spec_frho), np.log10(spec_frho_nodark)))
+    
+    if sun_alt < -20:
+        pl.plot(moon_sep, np.log10(spec_frho_nodark), marker='.', c='k', markersize=2)
+
+    else:
+        pl.plot(moon_sep, np.log10(spec_frho_nodark), marker='x', c='k', markersize=2)
+        
+frho_txt.close()
+    
+pl.xlabel('Separation angle [deg].')
+pl.ylabel(r'$f \ (\rho)$')
 
 pl.show()
