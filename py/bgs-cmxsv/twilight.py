@@ -119,6 +119,7 @@ if __name__ == '__main__':
 
     fullwave          = config.wavelength
 
+    '''
     fig, axes         = plt.subplots(1, 3, figsize=(15, 5))
     
     xs                = np.arange(17., 21., 0.1)
@@ -132,12 +133,19 @@ if __name__ == '__main__':
         ax.set_ylim(0.0,   180.)
 
         ax.set_xlabel('Sun alt. [deg.]')
-        
+    ''' 
     print('\n\n')
 
-    print('NIGHT \t\t EXPID \t\t EXPTIME \t SUNALT \t SUNSEP \t ZD \t\t X \t\t TRANS \t\t GFA_R \t\t MODEL_R \t GFA_R - MODEL_R')
+    print('MJD \t\t NIGHT \t\t EXPID \t\t CAMERA \t EXPTIME \t SUNALT \t SUNSEP \t ZD \t\t X \t\t TRANS \t\t GFA_R \t\t MODEL_R \t GFA_R - MODEL_R')
+
+    first_night = None
     
-    for	i, (night, mjd, expid, exptime, ra, dec, trans, gfa_r) in enumerate(zip(gfas['NIGHT'], gfas['MJD'], gfas['EXPID'], gfas['EXPTIME'], gfas['RACEN'], gfas['DECCEN'], gfas['TRANSPARENCY'], gfas['SKY_MAG_AB'])):
+    for	i, (night, mjd, expid, camera, exptime, ra, dec, trans, gfa_r) in enumerate(zip(gfas['NIGHT'], gfas['MJD'], gfas['EXPID'], gfas['EXTNAME'], gfas['EXPTIME'],\
+                                                                                        gfas['RACEN'], gfas['DECCEN'], gfas['TRANSPARENCY'], gfas['SKY_MAG_AB'])):        
+
+        if first_night == None:
+            first_night = night
+
         t                 = Time(mjd, format='mjd', scale='utc')
         emayall.date      = t.iso
 
@@ -162,7 +170,7 @@ if __name__ == '__main__':
         moon_zd           = (90. - moon_alt)
 
         X                 = XX(zd)
-
+        '''
         # 
         simulator.atmosphere.airmass                         = X
         simulator.atmosphere.moon.moon_zenith                = moon_zd * u.deg
@@ -184,19 +192,24 @@ if __name__ == '__main__':
 
         # Normalize to Dark Sky Zenith V [u.erg / (u.cm ** 2 * u.s * u.angstrom]                                                                                                                                                            
         model_rmag             = rfilter.get_ab_magnitudes(sky_pad, skywave_pad).as_array()[0][0]
+        '''
 
-        print('{} \t {:08d} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f}'.format(night, expid, exptime, sun_alt, sun_sep, zd, X, trans, gfa_r, model_rmag, gfa_r - model_rmag))
-
-        zero = axes[0].scatter(sun_alt, sun_sep, c=gfa_r,              marker='.', s=12, vmin=18.,  vmax=21.)
-        one  = axes[1].scatter(sun_alt, sun_sep, c=gfa_r - model_rmag, marker='.', s=12, vmin=-2.5, vmax=2.5)
-        two  = axes[2].scatter(sun_alt, sun_sep, c=X,                  marker='.', s=12, vmin=1.,   vmax=2.)
+        model_rmag = 99.
         
-        break
+        print('{:.6f} \t {} \t {:08d} \t {} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f}'.format(mjd, night, expid, camera, exptime, sun_alt, sun_sep,\
+                                                                                                                                              zd, X, trans, gfa_r, model_rmag, gfa_r - model_rmag))
 
+        # zero = axes[0].scatter(sun_alt, sun_sep, c=gfa_r,              marker='.', s=12, vmin=18., vmax=21.)
+        # one  = axes[1].scatter(sun_alt, sun_sep, c=gfa_r - model_rmag, marker='.', s=12, vmin=-.5, vmax=.5)
+        # two  = axes[2].scatter(sun_alt, sun_sep, c=X,                  marker='.', s=12, vmin=1.,  vmax=2.)
+
+        if night != first_night:
+            exit(0)
+'''        
 fig.colorbar(zero, ax=axes[0], label='GFA R')
 fig.colorbar( one, ax=axes[1], label='GFA R - MODEL R')
 fig.colorbar( two, ax=axes[2], label='AIRMASS')
 
 pl.show()
-
+'''
 print('\n\n')
