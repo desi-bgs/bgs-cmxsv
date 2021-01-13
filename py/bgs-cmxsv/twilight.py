@@ -1,13 +1,13 @@
-#!/usr/bin/env python                                                                                                                                                                                                                        
+#!/usr/bin/env python
 from    __future__               import  absolute_import, division, print_function
 
-import time
-import pickle
-import specsim
-import numpy as np
+import  time
+import  pickle
+import  specsim
+import  numpy as np
 
-from   pkg_resources import resource_filename
-from   scipy.interpolate import interp1d
+from    pkg_resources import resource_filename
+from    scipy.interpolate import interp1d
 
 import  os
 import  time
@@ -44,13 +44,13 @@ from    desiutil.iers            import  freeze_iers
 freeze_iers()
 
 def XX(zd):
-    # Airmass at given zenith distance.                                                                                                                                                                                                      
+    # Airmass at given zenith distance.
     return  (1. - 0.96 * np.sin(zd * np.pi / 180.)**2.)**-0.5
 
 def get_twi(wave, alpha, delta, airmass, check=False):
-    # wave: angstroms.
-    # alpha: sun altitude [degrees].
-    # delta: sun separation [degrees].
+    # wave:    Angstroms.
+    # alpha:   Sun altitude [degrees].
+    # delta:   Sun separation [degrees].
     # airmass: X
 
     assert  (alpha < -14.) & (alpha > -20.)
@@ -91,6 +91,7 @@ def get_twi(wave, alpha, delta, airmass, check=False):
 if __name__ == '__main__':
     import pylab as pl
 
+    
     start             = time.time()
 
     # specsim.
@@ -103,10 +104,43 @@ if __name__ == '__main__':
     
     gfas              = resource_filename('bgs-cmxsv', 'dat/offline_all_guide_ccds_SV1-thru_20210111.fits')
     gfas              = Table.read(gfas)
+    
+    #
+    gfas              = gfas[gfas['N_SOURCES_FOR_PSF'] > 2]
+    gfas              =	gfas[gfas['CONTRAST'] > 2]
+    gfas              =	gfas[gfas['NPIX_BAD_TOTAL'] < 10]
+    gfas              = gfas[gfas['TRANSPARENCY'] > 0.95] 
 
+    # [EXTNAME, NIGHT].
+    cols              = ['MJD', 'EXPID', 'CUBE_INDEX', 'EXPTIME', 'RACEN', 'DECCEN', 'TRANSPARENCY', 'SKY_MAG_AB']
+    gfas_grouped      = gfas[cols]
+
+    # Limit to even CUBE INDEX.
+    isin              = np.array(gfas_grouped['CUBE_INDEX'] % 2).astype(bool)
+    
+    gfas_grouped      = gfas_grouped[isin]    
+    gfas_grouped      = gfas_grouped.group_by(['EXPID', 'CUBE_INDEX'])
+
+    # print(gfas_grouped.groups.keys)
     # 
-    # gfas            = gfas[gfas['GFA_TRANSPARENCY_MED'] > 0.95] 
+    # gfas_grouped.groups.keys  
+    #
+    # EXPID CUBE_INDEX
+    # ----- ----------
+    # 67674          0
+    # 67674          1
+    # 67674          2
+    # 67674          3
+    # 67674          4
+    # 67674          5
+    # 67674          6
+    # 67674          7
+    # ...
+    
+    gfas_binned       = gfas_grouped.groups.aggregate(np.median)
+    gfas              = gfas_binned
 
+    #
     mayall            = get_location()
 
     emayall           = ephem.Observer()
@@ -119,12 +153,10 @@ if __name__ == '__main__':
 
     fullwave          = config.wavelength
 
-    '''
+    # 
     fig, axes         = plt.subplots(1, 3, figsize=(15, 5))
     
     xs                = np.arange(17., 21., 0.1)
-
-    axes[0].set_ylabel('Sun sep. [deg.]')
     
     for ax in axes:
         ax.plot(xs, xs, c='k', lw=0.2)
@@ -133,18 +165,17 @@ if __name__ == '__main__':
         ax.set_ylim(0.0,   180.)
 
         ax.set_xlabel('Sun alt. [deg.]')
-    ''' 
+
+    axes[0].set_ylabel('Sun sep. [deg.]')
+        
     print('\n\n')
 
-    print('MJD \t\t NIGHT \t\t EXPID \t\t CAMERA \t EXPTIME \t SUNALT \t SUNSEP \t ZD \t\t X \t\t TRANS \t\t GFA_R \t\t MODEL_R \t GFA_R - MODEL_R')
-
-    first_night = None
+    print('Solving for {} GFA exposures.'.format(len(gfas)))
     
-    for	i, (night, mjd, expid, camera, exptime, ra, dec, trans, gfa_r) in enumerate(zip(gfas['NIGHT'], gfas['MJD'], gfas['EXPID'], gfas['EXTNAME'], gfas['EXPTIME'],\
-                                                                                        gfas['RACEN'], gfas['DECCEN'], gfas['TRANSPARENCY'], gfas['SKY_MAG_AB'])):        
-
-        if first_night == None:
-            first_night = night
+    print('MJD \t\t EXPID \t\t CUBEINDEX \t EXPTIME \t SUNALT \t SUNSEP \t ZD \t\t X \t\t TRANS \t\t GFA_R \t\t MODEL_R \t GFA_R - MODEL_R')
+    
+    for	i, (mjd, expid, cubeindex, exptime, ra, dec, trans, gfa_r) in enumerate(zip(gfas['MJD'],   gfas['EXPID'],  gfas['CUBE_INDEX'],   gfas['EXPTIME'],\
+                                                                                    gfas['RACEN'], gfas['DECCEN'], gfas['TRANSPARENCY'], gfas['SKY_MAG_AB'])):        
 
         t                 = Time(mjd, format='mjd', scale='utc')
         emayall.date      = t.iso
@@ -160,7 +191,7 @@ if __name__ == '__main__':
         sun_alt           = sun.alt * (180. / np.pi)
         sun_sep           = desisurvey.utils.separation_matrix([ra] * u.deg, [dec] * u.deg, [sun.ra] * u.deg, [sun.dec] * u.deg)[0][0].value
 
-        if (sun_alt > -14.) | (sun_alt < -20.):
+        if (sun_alt > -14.) | (sun_alt < -19.):
             continue
         
         moon_alt          = moon.alt * (180. / np.pi)
@@ -170,7 +201,7 @@ if __name__ == '__main__':
         moon_zd           = (90. - moon_alt)
 
         X                 = XX(zd)
-        '''
+        
         # 
         simulator.atmosphere.airmass                         = X
         simulator.atmosphere.moon.moon_zenith                = moon_zd * u.deg
@@ -179,6 +210,7 @@ if __name__ == '__main__':
 
         simulator.simulate()
 
+        # Dark + KS. 
         notwi_sky         = simulator.atmosphere.surface_brightness
         notwi_sky        *= 1.e-17
 
@@ -192,24 +224,18 @@ if __name__ == '__main__':
 
         # Normalize to Dark Sky Zenith V [u.erg / (u.cm ** 2 * u.s * u.angstrom]                                                                                                                                                            
         model_rmag             = rfilter.get_ab_magnitudes(sky_pad, skywave_pad).as_array()[0][0]
-        '''
+                
+        print('{:.6f} \t {:08d} \t {} \t\t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f}'.format(mjd, expid, cubeindex, exptime, sun_alt, sun_sep,\
+                                                                                                                                          zd, X, trans, gfa_r, model_rmag, gfa_r - model_rmag))
 
-        model_rmag = 99.
+        zero = axes[0].scatter(sun_alt, sun_sep, c=gfa_r,              marker='.', s=12, vmin=18., vmax=21.)
+        one  = axes[1].scatter(sun_alt, sun_sep, c=gfa_r - model_rmag, marker='.', s=12, vmin=-.5, vmax=.5)
+        two  = axes[2].scatter(sun_alt, sun_sep, c=X,                  marker='.', s=12, vmin=1.,  vmax=2.)
         
-        print('{:.6f} \t {} \t {:08d} \t {} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f}'.format(mjd, night, expid, camera, exptime, sun_alt, sun_sep,\
-                                                                                                                                              zd, X, trans, gfa_r, model_rmag, gfa_r - model_rmag))
-
-        # zero = axes[0].scatter(sun_alt, sun_sep, c=gfa_r,              marker='.', s=12, vmin=18., vmax=21.)
-        # one  = axes[1].scatter(sun_alt, sun_sep, c=gfa_r - model_rmag, marker='.', s=12, vmin=-.5, vmax=.5)
-        # two  = axes[2].scatter(sun_alt, sun_sep, c=X,                  marker='.', s=12, vmin=1.,  vmax=2.)
-
-        if night != first_night:
-            exit(0)
-'''        
 fig.colorbar(zero, ax=axes[0], label='GFA R')
 fig.colorbar( one, ax=axes[1], label='GFA R - MODEL R')
 fig.colorbar( two, ax=axes[2], label='AIRMASS')
 
 pl.show()
-'''
+
 print('\n\n')
