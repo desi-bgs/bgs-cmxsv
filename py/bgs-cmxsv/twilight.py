@@ -1,9 +1,51 @@
+#!/usr/bin/env python                                                                                                                                                                                                                        
+from    __future__               import  absolute_import, division, print_function
+
+import time
 import pickle
+import specsim
 import numpy as np
 
 from   pkg_resources import resource_filename
 from   scipy.interpolate import interp1d
 
+import  os
+import  time
+import  argparse
+import  fitsio
+import  desisurvey
+import  warnings
+import  specsim.config
+import  ephem
+import  speclite
+import  numpy                    as      np
+import  astropy.units            as      u
+import  pylab                    as      pl
+import  matplotlib.pyplot        as      plt
+import  specsim.simulator        as      simulator
+import  speclite.filters         as      filters
+import  astropy.units            as      units
+
+from    astropy.table            import  Table
+from    specsim                  import  config
+from    scipy                    import  ndimage
+from    multiprocessing          import  Pool, Array
+from    desisurvey.utils         import  get_location
+from    astropy.time             import  Time
+from    astropy.coordinates      import  SkyCoord, EarthLocation, AltAz
+from    speclite                 import  filters
+from    desispec.interpolation   import  resample_flux
+from    specsim.atmosphere       import  krisciunas_schaefer, Moon
+from    get_sky                  import  get_sky
+from    pkg_resources            import  resource_filename
+from    desiutil.iers            import  freeze_iers
+
+
+freeze_iers()
+
+def XX(zd):
+    # Airmass at given zenith distance.                                                                                                                                                                                                      
+    return  (1. - 0.96 * np.sin(zd * np.pi / 180.)**2.)**-0.5
 
 def get_twi(wave, alpha, delta, airmass, check=False):
     # wave: angstroms.
@@ -37,7 +79,7 @@ def get_twi(wave, alpha, delta, airmass, check=False):
     twi         /= np.pi
 
     # fill_value='extrapolate'.
-    I_twi_interp = interp1d(10. * twi_wave, twi, bounds_error=True)
+    I_twi_interp = interp1d(10. * twi_wave, twi, bounds_error=False, fill_value='extrapolate')
 
     # Clip below. 
     Isky         = np.clip(I_twi_interp(wave), 0.0, None)
@@ -48,10 +90,90 @@ def get_twi(wave, alpha, delta, airmass, check=False):
 
 if __name__ == '__main__':
     import pylab as pl
-    
 
-    wave    = np.arange(4.e3, 9.e3, 10.)
-    _, twi  = get_twi(wave, -15., 90., 1.3)
+    start             = time.time()
+
+    # specsim.
+    config            = specsim.config.load_config('desi')
+    simulator         = specsim.simulator.Simulator('desi')
+    
+    simulator.simulate()
+
+    rfilter           = filters.load_filters('decam2014-r')
+    
+    gfas              = resource_filename('bgs-cmxsv', 'dat/offline_all_guide_ccds_SV1-thru_20210111.fits')
+    gfas              = Table.read(gfas)
+
+    # 
+    # gfas            = gfas[gfas['GFA_TRANSPARENCY_MED'] > 0.95] 
+
+    mayall            = get_location()
+
+    emayall           = ephem.Observer()
+    emayall.lon       = ephem.degrees(mayall.lon.value * np.pi / 180.)
+    emayall.lat       = ephem.degrees(mayall.lat.value * np.pi / 180.)
+    emayall.elevation = mayall.height.value
+
+    moon              = ephem.Moon()
+    sun               = ephem.Sun()
+
+    fullwave          = config.wavelength
+
+    fig, axes         = plt.subplots(1, 3, figsize=(15, 5))
+    
+    xs                = np.arange(17., 21., 0.1)
+
+    axes[0].set_ylabel('Sun sep. [deg.]')
+    
+    for ax in axes:
+        ax.plot(xs, xs, c='k', lw=0.2)
+
+        ax.set_xlim(-14., -20.0)
+        ax.set_ylim(0.0,   180.)
+
+        ax.set_xlabel('Sun alt. [deg.]')
         
-    pl.plot(wave, twi)
-    pl.show()
+    print('\n\n')
+
+    print('NIGHT \t\t EXPID \t\t EXPTIME \t SUNALT \t SUNSEP \t ZD \t\t X \t\t TRANS \t\t GFA_R \t\t MODEL_R \t GFA_R - MODEL_R')
+    
+    for	i, (night, mjd, expid, exptime, ra, dec, trans, gfa_r) in enumerate(zip(gfas['NIGHT'], gfas['MJD'], gfas['EXPID'], gfas['EXPTIME'], gfas['RACEN'], gfas['DECCEN'], gfas['TRANSPARENCY'], gfas['SKY_MAG_AB'])):
+        t                 = Time(mjd, format='mjd', scale='utc')
+        emayall.date      = t.iso
+
+        pos               = SkyCoord(ra = ra * u.degree, dec = dec * u.degree, frame='icrs').transform_to(AltAz(obstime=t, location=mayall))
+        alt               = pos.alt.degree
+        az                = pos.az.degree
+        zd                = 90. - alt
+
+        sun.compute(emayall)
+        moon.compute(emayall)
+
+        sun_alt           = sun.alt * (180. / np.pi)
+        sun_sep           = desisurvey.utils.separation_matrix([ra] * u.deg, [dec] * u.deg, [sun.ra] * u.deg, [sun.dec] * u.deg)[0][0].value
+
+        if (sun_alt > -14.) | (sun_alt < -20.):
+            continue
+        
+        moon_alt          = moon.alt * (180. / np.pi)
+        moon_frac         = moon.moon_phase
+        moon_sep          = desisurvey.utils.separation_matrix([ra] * u.deg, [dec] * u.deg, [moon.ra] * u.deg, [moon.dec] * u.deg)[0][0].value
+        moon_phase        = 180. * np.arccos(2.*moon_frac - 1.) / np.pi # deg.                                                                                                                                                                    
+        moon_zd           = (90. - moon_alt)
+
+        X                 = XX(zd)
+
+        # 
+        simulator.atmosphere.airmass                         = X
+        simulator.atmosphere.moon.moon_zenith                = moon_zd * u.deg
+        simulator.atmosphere.moon.separation_angle           = moon_sep * u.deg
+        simulator.atmosphere.moon.moon_phase                 = moon_phase / 180.
+
+        simulator.simulate()
+
+        notwi_sky         = simulator.atmosphere.surface_brightness
+        notwi_sky        *= 1.e-17
+
+        print('{} \t {:08d} \t {:.6f} \t {:.6f} {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f}'.format(night, expid, exptime, sunalt, sunsep, zd, X, trans, gfa_r, gfa_r))
+        
+        break
