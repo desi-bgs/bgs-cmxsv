@@ -307,7 +307,8 @@ dmab           = -2.5 * np.log10(2.5)
 
 bright_lim     = nominal_dark_r + dmab
 
-brite_conds    = conditions[conditions['GFA_SKY_MAG_AB_MED'] <= bright_lim]
+brite_conds    = (conditions['GFA_SKY_MAG_AB_MED'] <= bright_lim) & (conditions['GFA_TRANSPARENCY_MED'] > 0.95)
+brite_conds    = conditions[brite_conds]
 
 def process_one(cond):
     mjdobs  = cond['MJDOBS']
@@ -347,7 +348,7 @@ for i, cond in enumerate(brite_conds):
     # print(ks(cond['MJDOBS'], cond['TILERA'], cond['TILEDEC']))
     
     # [erg / angstrom / s / cm**2 / arcsec**2]
-    wave, sky, spec_vmag, spec_rmag, vmag_nodark, rmag_nodark = get_sky(cond['NIGHT'], '{:08d}'.format(cond['EXPID']), cond['EXPTIME'], 'model', redux="daily", smoothing=0., specsim_darksky=True)
+    wave, sky, spec_vmag, spec_rmag, vmag_nodark, rmag_nodark = get_sky(cond['NIGHT'], '{:08d}'.format(cond['EXPID']), cond['EXPTIME'], 'model', redux="daily", smoothing=0., specsim_darksky=False, nightly_darksky=True)
     
     moon_sep, sun_alt, spec_frho        = ks(cond['MJDOBS'], cond['TILERA'], cond['TILEDEC'], spec_vmag=spec_vmag,   simulator=simulator)
     moon_sep, sun_alt, spec_frho_nodark = ks(cond['MJDOBS'], cond['TILERA'], cond['TILEDEC'], spec_vmag=vmag_nodark, simulator=simulator)

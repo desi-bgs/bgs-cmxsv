@@ -21,8 +21,8 @@ moon_sep, sun_alt, spec_frho, spec_frho_nodark = np.loadtxt(frho_path, unpack=Tr
 
 twilite   = sun_alt > -20.0
 
-pl.plot(moon_sep[twilite],  spec_frho[twilite],   marker='x', lw=0.0, c='k', markersize=4)
-pl.plot(moon_sep[~twilite], spec_frho[~twilite], marker='.', lw=0.0, c='k', markersize=2)
+pl.plot( moon_sep[twilite],  spec_frho_nodark[twilite],   marker='x', lw=0.0, c='k', markersize=4)
+pl.plot(moon_sep[~twilite], spec_frho_nodark[~twilite], marker='.', lw=0.0, c='k', markersize=2)
 
 pl.legend(frameon=False)
 

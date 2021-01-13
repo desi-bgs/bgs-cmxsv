@@ -99,8 +99,10 @@ cslice = {"b": slice(0, 2751), "r": slice(2700, 5026), "z": slice(4900, 7781)}
 
 spec_thru = load_spec_thru()
 
+nightly_dsky_cache = {}
+
 # AR r-band sky mag / arcsec2 from sky-....fits files
-def get_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=100.0, specsim_darksky=False):
+def get_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=100.0, specsim_darksky=False, nightly_darksky=False):
     # AR ftype = "data" or "model"
     # AR redux = "daily" or "blanc"
     # AR if ftype = "data" : read the sky fibers from frame*fits + apply flat-field
@@ -109,6 +111,7 @@ def get_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=100.0
     # AR to integrate over the decam-r-band, we need cameras b and r
     if ftype not in ["data", "model"]:
         sys.exit("ftype should be 'data' or 'model'")
+
     sky = np.zeros(len(fullwave))
     reduxdir = dailydir.replace("daily", redux)
     
@@ -156,7 +159,7 @@ def get_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=100.0
                 # nspec += ii.sum()
                 
                 # Ignores fiberflat corrected (fl), as includes e.g. fiberloss. 
-                sky_cam += (fr.flux[ii, :] * fr.ivar[ii, :]).sum(axis=0)
+                sky_cam  += (fr.flux[ii, :] * fr.ivar[ii, :]).sum(axis=0)
                 norm_cam += fr.ivar[ii, :].sum(axis=0)
                     
             # AR model
@@ -281,10 +284,61 @@ def get_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=100.0
         rmag_nodark  = rfilter.get_ab_magnitudes(sky_pad * units.erg / (units.cm ** 2 * units.s * units.angstrom), fullwave_pad * units.angstrom).as_array()[0][0]
 
         return  fullwave, sky, vmag, rmag, vmag_nodark, rmag_nodark
+
+    elif nightly_darksky:
+        from   pkg_resources import resource_filename
+
         
-    return fullwave, sky, vmag, rmag
+        if night in nightly_dsky_cache.keys():
+            return  nightly_dsky_cache[night]
+        
+        gfa_info       = resource_filename('bgs-cmxsv', 'dat/sv1-exposures.fits')
+        gfa_info       = Table.read(gfa_info)
+
+        bright_cut     = 20.50
+        
+        good_conds     = (gfa_info['GFA_TRANSPARENCY_MED'] > 0.95) & (gfa_info['GFA_SKY_MAG_AB_MED'] >= bright_cut)
+        good_conds     =  gfa_info[good_conds]
+        
+        expids         = np.array([np.int(x.split('/')[-1]) for x in glob.glob(os.path.join(reduxdir, "exposures", "{}/00*".format(night)))])
+        isgood         = np.isin(good_conds['EXPID'], expids)
+
+        if np.any(isgood):        
+            good_conds = good_conds[isgood]
+            best       = good_conds['GFA_SKY_MAG_AB_MED'] == good_conds['GFA_SKY_MAG_AB_MED'].max()
+
+            print('Nightly Dark GFA r-mag for {}:  {}'.format(night, good_conds['GFA_SKY_MAG_AB_MED'].max()))
+            
+            best_expid = good_conds[best]['EXPID'][0]
+            best_expid = '{:08d}'.format(best_expid)
+            
+            darkwave, darksky, dark_vmag, dark_rmag = get_sky(night, best_expid, exptime, ftype="model", redux="daily", smoothing=0.0, specsim_darksky=False, nightly_darksky=False)
+
+            sky        = np.clip(sky - darksky, a_min=0.0, a_max=None)
+
+            # AR zero-padding spectrum so that it covers the DECam r-band range
+            sky_pad, fullwave_pad = vfilter.pad_spectrum(sky, fullwave, method="zero")
+            vmag_nodark  = vfilter.get_ab_magnitudes(sky_pad * units.erg / (units.cm ** 2 * units.s * units.angstrom), fullwave_pad * units.angstrom).as_array()[0][0]
+
+            # AR zero-padding spectrum so that it covers the DECam r-band range
+            sky_pad, fullwave_pad = rfilter.pad_spectrum(sky, fullwave, method="zero")
+            rmag_nodark  = rfilter.get_ab_magnitudes(sky_pad * units.erg / (units.cm ** 2 * units.s * units.angstrom), fullwave_pad * units.angstrom).as_array()[0][0]
+            
+            nightly_dsky_cache[night] = fullwave, sky, vmag, rmag, vmag_nodark, rmag_nodark
+            
+        else:
+            print('No nightly darksky available for night: {}.  Defaulting to specsim.'.format(night))
+
+            nightly_dsky_cache[night] = get_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=0.0, specsim_darksky=True, nightly_darksky=False)
+
+        return  nightly_dsky_cache[night]
+            
+    else:
+        pass
+    
+    return  fullwave, sky, vmag, rmag
 
 
 if __name__ == '__main__':
-    get_sky('20210103', '00070758', 300.094, 'model', redux="daily", smoothing=0., specsim_darksky=True)
+    get_sky('20210103', '00070758', 300.094, 'model', redux="daily", smoothing=0., specsim_darksky=False, nightly_darksky=True)
     
