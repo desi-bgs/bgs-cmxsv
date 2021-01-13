@@ -174,6 +174,29 @@ if __name__ == '__main__':
         notwi_sky         = simulator.atmosphere.surface_brightness
         notwi_sky        *= 1.e-17
 
-        print('{} \t {:08d} \t {:.6f} \t {:.6f} {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f}'.format(night, expid, exptime, sunalt, sunsep, zd, X, trans, gfa_r, gfa_r))
+        twiwave, twi      = get_twi(fullwave, sun_alt, sun_sep, X, check=False)
+        twi              *= 1.e-17
+
+        sky               = twi + notwi_sky.value
+        sky              *= u.erg / (u.cm ** 2 * u.s * u.angstrom)
+        
+        sky_pad, skywave_pad   = rfilter.pad_spectrum(sky, fullwave.value, method="zero")
+
+        # Normalize to Dark Sky Zenith V [u.erg / (u.cm ** 2 * u.s * u.angstrom]                                                                                                                                                            
+        model_rmag             = rfilter.get_ab_magnitudes(sky_pad, skywave_pad).as_array()[0][0]
+
+        print('{} \t {:08d} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f}'.format(night, expid, exptime, sun_alt, sun_sep, zd, X, trans, gfa_r, model_rmag, gfa_r - model_rmag))
+
+        zero = axes[0].scatter(sun_alt, sun_sep, c=gfa_r,              marker='.', s=12, vmin=18.,  vmax=21.)
+        one  = axes[1].scatter(sun_alt, sun_sep, c=gfa_r - model_rmag, marker='.', s=12, vmin=-2.5, vmax=2.5)
+        two  = axes[2].scatter(sun_alt, sun_sep, c=X,                  marker='.', s=12, vmin=1.,   vmax=2.)
         
         break
+
+fig.colorbar(zero, ax=axes[0], label='GFA R')
+fig.colorbar( one, ax=axes[1], label='GFA R - MODEL R')
+fig.colorbar( two, ax=axes[2], label='AIRMASS')
+
+pl.show()
+
+print('\n\n')
