@@ -10,7 +10,8 @@ import yaml
 import fitsio
 import numpy as np 
 # -- astropy -- 
-from astropy.table import Table
+from astropy.io import fits 
+import astropy.table as atable
 import astropy.units as units
 import astropy.constants as constants
 
@@ -21,12 +22,35 @@ assert os.environ['DESIMODEL'] != ''
 
 def sv1_exposures(): 
     ''' read in  summary of SV1 exposures (Anand, from Aaron & David K) to
-    astropy table. `/global/homes/m/mjwilson/desi/SV1/sv1-exposures.fits` was
-    compiled by Mike W. 
+    astropy table. `sv1-exposures.fits` was compiled by Mike W. 
     '''
     fexp = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dat', 'sv1-exposures.fits')
+    return atable.Table.read(fexp)
 
-    return Table.read(fexp)
+
+def sv1_deep_exposures(): 
+    ''' read in summary of SV1 *deep* exposures to astropy table. These
+    deep "exposures" are combination of a bunch of separate exposures. 
+    '''
+    # read all sv1 exposures 
+    sv1 = sv1_exposures() 
+
+    # read in tileid, date, exposure id
+    _, _, deep_expid = np.loadtxt(
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dat',
+                'blanc_deep_explist.dat'), 
+            unpack=True)
+    # match them to the sv1 exposure table using the expid 
+    deep = sv1[np.isin(sv1['EXPID'], deep_expid)] 
+   
+    # tile information 
+    tinfo = atable.unique(deep['TILEID', 'TILERA', 'TILEDEC'], keys='TILEID')
+
+    # bin exposures by tileid and sum up the exposure time and depths
+    dexps = deep['TILEID', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH']
+    dexps_binned = dexps.group_by('TILEID').groups.aggreate(np.sum)
+    
+    return atable.join(dexps_binned, tinfo, keys='TILEID', join_type='left')
 
 
 def sv1_bright_exposures(): 
@@ -155,3 +179,62 @@ def get_obs_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=1
     # AR sky model flux in erg / angstrom / s / cm**2 / arcsec**2
     sky /= telap_cm2 * fiber_area_arcsec2
     return wave_full, sky
+
+
+def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'): 
+    ''' read good fibers that point to BGS targets in zbest files of (tileid,
+    date). 
+
+    Notes
+    -----
+    * for deep exposure set date = 'deep'
+    * at the moment it only support the nightly coadds so expid=None 
+    '''
+    from desitarget.sv1.sv1_targetmask import desi_mask as sv1_desi_mask
+    from desitarget.sv1.sv1_targetmask import bgs_mask as sv1_bgs_mask
+
+    dir_redux = '/global/cfs/cdirs/desi/spectro/redux/%s/' % redux
+    dir_zbest = os.path.join(dir_redux, 'tiles', str(tileid), str(date)) 
+    
+    petals = [] 
+    for petal in range(10):
+        fzbest = os.path.join(dir_zbest, 'zbest-%i-%i-%s.fits' % (petal, tileid)) 
+
+        if not os.path.isfile(fzbest): 
+            print(" %s does not exist" % fzbest) 
+            continue 
+
+        infile  = fits.open(fzbest)
+        zbest   = atable.Table(infile['ZBEST'].data) 
+        fmap    = atable.Table(infile['FIBERMAP'].data) 
+        
+        tinfo = fmap['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'FLUX_R',
+                'FIBERFLUX_R', 'PHOTSYS', 'SV1_DESI_TARGET', 'SV1_BGS_TARGET',
+                'DESI_TARGET', 'BGS_TARGET'] 
+        tinfo    = astropy.table.unique(tinfo, keys='TARGETID')
+        
+        deep     = join(zbest, tinfo, keys='TARGETID', join_type='left')
+        assert len(deep) == 500 # fibers per petal
+        
+        # bad fibers
+        badfiber = deep['NODATA']
+
+        # only keep bgs 
+        badbgs   = (deep['SV1_DESI_TARGET'] & sv1_desi_mask['BGS_ANY']) == 0
+
+        nbright  = (deep['SV1_BGS_TARGET'] & sv1_bgs_mask['BGS_BRIGHT']) == 0
+        nfaint   = (deep['SV1_BGS_TARGET'] & sv1_bgs_mask['BGS_FAINT'])  == 0
+        
+        if targetclass == 'all':
+            # limit to faint | bright bgs only.
+            badbgs   = badbgs | (nbright & nfaint)
+        elif targetclass == 'bright': 
+            # limit to bright bgs only.
+            badbgs   = badbgs | nbright
+        else: 
+            raise NotImplementedError
+    
+        cuts = ~badfiber & ~badbgs
+        petals.append(deep[~cuts])
+    
+    return atable.hstack(petals) 
