@@ -48,7 +48,7 @@ def sv1_deep_exposures():
 
     # bin exposures by tileid and sum up the exposure time and depths
     dexps = deep['TILEID', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH']
-    dexps_binned = dexps.group_by('TILEID').groups.aggreate(np.sum)
+    dexps_binned = dexps.group_by('TILEID').groups.aggregate(np.sum)
     
     return atable.join(dexps_binned, tinfo, keys='TILEID', join_type='left')
 
