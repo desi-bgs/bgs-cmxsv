@@ -168,9 +168,7 @@ if __name__ == '__main__':
 
     axes[0].set_ylabel('Sun sep. [deg.]')
         
-    print('\n\n')
-
-    print('Solving for {} GFA exposures.'.format(len(gfas)))
+    print('\n\nSolving for a potential of {} GFA exposures.\n\n'.format(len(gfas)))
     
     print('MJD \t\t EXPID \t\t CUBEINDEX \t EXPTIME \t SUNALT \t SUNSEP \t ZD \t\t X \t\t TRANS \t\t GFA_R \t\t MODEL_R \t GFA_R - MODEL_R')
     
@@ -225,8 +223,8 @@ if __name__ == '__main__':
         # Normalize to Dark Sky Zenith V [u.erg / (u.cm ** 2 * u.s * u.angstrom]                                                                                                                                                            
         model_rmag             = rfilter.get_ab_magnitudes(sky_pad, skywave_pad).as_array()[0][0]
                 
-        print('{:.6f} \t {:08d} \t {} \t\t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f}'.format(mjd, expid, cubeindex, exptime, sun_alt, sun_sep,\
-                                                                                                                                          zd, X, trans, gfa_r, model_rmag, gfa_r - model_rmag))
+        print('{:.6f} \t {:08d} \t {} \t\t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:.6f} \t {:+.6f}'.format(mjd, expid, cubeindex, exptime, sun_alt, sun_sep,\
+                                                                                                                                           zd, X, trans, gfa_r, model_rmag, gfa_r - model_rmag))
 
         zero = axes[0].scatter(sun_alt, sun_sep, c=gfa_r,              marker='.', s=12, vmin=18., vmax=21.)
         one  = axes[1].scatter(sun_alt, sun_sep, c=gfa_r - model_rmag, marker='.', s=12, vmin=-.5, vmax=.5)
