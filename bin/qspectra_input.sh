@@ -6,12 +6,17 @@ import astropy.io.fits as fits
 from   astropy.table import Table
 from   redrock.rebin import trapz_rebin
 
+'''
+Generate truth spectra for input to quickspectra (format),
+from camera coadds of deep fields.
+'''
 
-todo      = glob.glob('spectra/lynx/coadd*')
+root      = '/global/cscratch1/sd/mjwilson/desi/SV1/spectra/'
+todo      = glob.glob(root + '/lynx/coadd*')
 
 for x in todo:
     coadd = fits.open(x)
-    zbest = Table(fits.open('lynx/{}'.format(x.split('/')[-1].replace('coadd', 'zbest')))['ZBEST'].data)
+    zbest = Table(fits.open(root + '/lynx/{}'.format(x.split('/')[-1].replace('coadd', 'zbest')))['ZBEST'].data)
 
     # coadd-6-80613-all.fits
     name  = x.split('/')[-1]
@@ -51,6 +56,6 @@ for x in todo:
     # Wave [A] and Flux 1.e-17 erg/s/cm2/A.
     result = np.c_[wave, flux.T]
 
-    np.savetxt('spectra/qspec_in/bgs-{}-{}.txt'.format(petal, tile), result, header='# Wave [A]    FLUX [1.e-17 erg/s/cm2/A]')
+    np.savetxt(root + '/spectra/qspec_in/bgs-{}-{}.txt'.format(petal, tile), result, header='# Wave [A]    FLUX [1.e-17 erg/s/cm2/A]')
 
 print('\n\nDone.\n\n')

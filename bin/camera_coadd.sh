@@ -2,7 +2,11 @@
 import os
 import glob
 
+'''
+Coadd deep field cframe across cameras for input to e.g. desisim/scripts/quickspectra or specsim. 
+'''
 
+# Point to deep field coadds.
 todo = [x.split('/')[-1] for x in glob.glob('lynx/coadd*.fits')]
 
 for x in todo:

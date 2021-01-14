@@ -11,6 +11,7 @@ from   astropy.table import Table, vstack, join
 # https://github.com/desihub/desitarget/blob/master/py/desitarget/sv1/data/sv1_targetmask.yaml
 from   desitarget.sv1.sv1_targetmask import desi_mask as sv1_desi_mask
 from   desitarget.sv1.sv1_targetmask import bgs_mask as sv1_bgs_mask
+from   pkg_resources                 import resource_filename
 
 # [BGS_FAINT,           0, "BGS faint targets",              {obsconditions: BRIGHT|GRAY|DARK}]
 # [BGS_BRIGHT,          1, "BGS bright targets",             {obsconditions: BRIGHT}]
@@ -20,7 +21,13 @@ from   desitarget.sv1.sv1_targetmask import bgs_mask as sv1_bgs_mask
 
 # https://github.com/desihub/desitarget/blob/master/doc/nb/target-selection-bits-and-bitmasks.ipynb
 
-exps  = Table.read('bgs-cmxsv/py/bgs-cmxsv/dat/sv1-exposures.fits')
+write = False
+
+# Use truth catalogue to check z success.
+truth = True
+
+epath = resource_filename('bgs-cmxsv', 'dat/sv1-exposures.fits')
+exps  = Table.read(epath)
 exps  = exps[exps['TARGETS'] == 'BGS+MWS']
 
 tiles = np.unique(exps['TILEID'].data)
@@ -88,7 +95,7 @@ for tileid in tiles:
   for night in nights:   
     for petal in range(10):
         # /global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/20201212/fba-080605.fits
-        path         = '/global/homes/m/mjwilson/blanc/tiles/{}/{}/zbest-{}-{}-{}.fits'.format(tileid, night, petal, tileid, night)
+        path         = '/global/cfs/cdirs/desi/spectro/redux/blanc/tiles/{}/{}/zbest-{}-{}-{}.fits'.format(tileid, night, petal, tileid, night)
 
         # print(path)
         
@@ -101,7 +108,7 @@ for tileid in tiles:
             zbest    = Table(zbest)
             fmap     = Table(fmap)
 
-            print('\n\n{} \t {} \t ({} \t {})'.format(tileid, petal, len(zbest), len(fmap)))
+            print('\n\n{} \t {} \t {} \t ({} \t {})'.format(tileid, night, petal, len(zbest), len(fmap)))
             
             tinfo    = fmap['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'FLUX_R', 'FIBERFLUX_R', 'PHOTSYS', 'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'DESI_TARGET', 'BGS_TARGET'] 
             tinfo    = astropy.table.unique(tinfo, keys='TARGETID')
@@ -139,7 +146,7 @@ for tileid in tiles:
             deep     = deep[~badbgs]
             
             # Assigned BGS, e.g. 3259 for 80614 here: https://data.desi.lbl.gov/desi/users/raichoor/fiberassign-sv1/sv1-per-tile/index.html#tile-nexp-design
-            exps['NBGSA'][exps['TILEID'] == tileid] += len(deep)
+            exps['NBGSA'][(exps['TILEID'] == tileid) & (exps['NIGHT'] == night)] += len(deep)
             
             # https://github.com/desihub/redrock/blob/master/py/redrock/zwarning.py
             # NODATA for 'malfunctioning' positioner.
@@ -151,33 +158,35 @@ for tileid in tiles:
             badfiber = deep['NODATA']
             deep     = deep[~badfiber]
 
-            exps['NBGSW'][exps['TILEID'] == tileid] += len(deep)
+            exps['NBGSW'][(exps['TILEID'] == tileid) & (exps['NIGHT'] == night)] += len(deep)
             
             # Good redshifts (in deep)
             badz     = (deep['ZWARN'] > 0) | (deep['DELTACHI2'] < 40.) | (deep['SPECTYPE'] == 'STAR')
-            badz     = badz | (deep['Z'] < 0.0) | (deep['Z'] > 0.6)
-            badz     = badz | (deep['ZERR'] > (0.0005 * (1. + deep['Z'])))
+            badz     =  badz | (deep['Z'] < 0.0) | (deep['Z'] > 0.6)
+            badz     =  badz | (deep['ZERR'] > (0.0005 * (1. + deep['Z'])))
             
-            # Test against deep 'truth'.
-            # badz   = badz | truth_test(tileid, deep)
-
+            if truth:
+                badz = badz | truth_test(tileid, deep)
+  
             #
             deep['BGS_SUCCESS'] = ~badz
 
-            Path('spectra/bgs-zbest/{}/{}'.format(tileid, night)).mkdir(parents=True, exist_ok=True)
+            if write:
+                # Write only BGS (bright) on good fibers. 
+                Path('/global/cscratch1/sd/mjwilson/desi/SV1/spectra/bgs-zbest/{}/{}'.format(tileid, night)).mkdir(parents=True, exist_ok=True)
             
-            deep.write('spectra/bgs-zbest/{}/{}/bgs-zbest-{}-{}-{}.fits'.format(tileid, night, petal, tileid, night))
+                deep.write('/global/cscratch1/sd/mjwilson/desi/SV1/spectra/bgs-zbest/{}/{}/bgs-zbest-{}-{}-{}.fits'.format(tileid, night, petal, tileid, night), overwrite=True)
             
             deep     = deep[~badz]
                         
             for label, lost in zip(['FIBER', 'BGS', 'Z'], [badfiber, badbgs, badz]):
                 print('LOST {} on {} cut'.format(np.count_nonzero(lost), label))
                 
-            exps['NBGSZ'][exps['TILEID'] == tileid] += len(deep)
+            exps['NBGSZ'][(exps['TILEID'] == tileid) & (exps['NIGHT'] == night)] += len(deep)
 
         else:
             print('Failed to retrieve {}.'.format(path)) 
-  
+            
 exps['BGSSUCCESS_%'] = ['{:.2f}'.format(100. * x['NBGSZ'] / x['NBGSW']) for x in exps]
 
 exps.sort('BGSSUCCESS_%')

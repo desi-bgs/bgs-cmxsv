@@ -10,6 +10,7 @@ from   astropy.table import Table, vstack, join
 # https://github.com/desihub/desitarget/blob/master/py/desitarget/sv1/data/sv1_targetmask.yaml
 from   desitarget.sv1.sv1_targetmask import desi_mask as sv1_desi_mask
 from   desitarget.sv1.sv1_targetmask import bgs_mask as sv1_bgs_mask
+from   pkg_resources                 import resource_filename
 
 # [BGS_FAINT,           0, "BGS faint targets",              {obsconditions: BRIGHT|GRAY|DARK}]
 # [BGS_BRIGHT,          1, "BGS bright targets",             {obsconditions: BRIGHT}]
@@ -21,13 +22,15 @@ from   desitarget.sv1.sv1_targetmask import bgs_mask as sv1_bgs_mask
 
 write = True
 
-exps  = Table.read('bgs-cmxsv/py/bgs-cmxsv/dat/sv1-exposures.fits')
+epath = resource_filename('bgs-cmxsv', 'dat/sv1-exposures.fits')
+exps  = Table.read(epath)
 exps  = exps[exps['TARGETS'] == 'BGS+MWS']
 
 tiles = np.unique(exps['TILEID'].data)
 
 # TILEID  NIGHT  EXPID
-dexps = np.loadtxt('bgs-cmxsv/py/bgs-cmxsv/dat/blanc_deep_explist.dat')
+dexps = resource_filename('bgs-cmxsv', 'dat/blanc_deep_explist.dat') 
+dexps = np.loadtxt(dexps)
 dexps = exps[np.isin(exps['EXPID'], dexps[:,2])]
 
 dexps          = dexps['TILEID', 'TILERA', 'TILEDEC', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH']
@@ -54,7 +57,7 @@ for tileid in tiles:
     
     for petal in range(10):
         # /global/cfs/cdirs/desi/users/raichoor/fiberassign-sv1/20201212/fba-080605.fits
-        dpath        = '/global/homes/m/mjwilson/blanc/tiles/{}/deep/zbest-{}-{}-deep.fits'.format(tileid, petal, tileid)
+        dpath        = '/global/cfs/cdirs/desi/spectro/redux/blanc/tiles/{}/deep/zbest-{}-{}-deep.fits'.format(tileid, petal, tileid)
     
         if os.path.isfile(dpath):            
             infile   = fits.open(dpath)
@@ -127,6 +130,7 @@ for tileid in tiles:
             for label, lost in zip(['FIBER', 'BGS', 'Z'], [badfiber, badbgs, badz]):
                 print('LOST {} on {} cut'.format(np.count_nonzero(lost), label))
                 
+            # Limit to only BGS (bright) on a working fiber, with a good redshift. 
             deep_cache[tileid] = vstack((deep_cache[tileid], deep))
 
             dexps['NBGSZ'][dexps['TILEID'] == tileid] += len(deep)
@@ -137,7 +141,7 @@ for tileid in tiles:
 if write:
     for tileid in deep_cache.keys():
         deep_cache[tileid].sort('TARGETID')
-        deep_cache[tileid].write('spectra/truth/bgs_deep_truth_{:d}.fits'.format(tileid))
+        deep_cache[tileid].write('/global/cscratch1/sd/mjwilson/desi/SV1/spectra/truth/bgs_deep_truth_{:d}.fits'.format(tileid), overwrite=True)
 
 #
 dexps['BGSSUCCESS_%'] = ['{:.2f}'.format(100. * x['NBGSZ'] / x['NBGSW']) for x in dexps]

@@ -1,5 +1,5 @@
 # Get the a list of science exposures for a specficic date and tile
-from    __future__ import division, print_function
+from    __future__           import division, print_function
 
 import  ephem
 import  fitsio
@@ -17,12 +17,19 @@ from    astropy.coordinates  import Angle
 from    desisurvey.utils     import get_airmass
 from    desiutil             import dust
 from    astropy.coordinates  import SkyCoord
+from    pkg_resources        import resource_filename
 
 # os.system('source ./env.sh')
 
+'''
+Generate coadds and redshifts other than nightly. 
+'''
+
+# Run date to timestamp output. 
 date          = '20210113'
+
 redux_dir     = '/global/cfs/cdirs/desi/spectro/redux/blanc/'
-output_dir    = '/global/homes/m/mjwilson/desi/SV1/spectra/exposures/'
+output_dir    = '/global/cscratch1/sd/mjwilson/desi/SV1/spectra/exposures/'
 
 # number of exposures in a coadded; 1 for single-exposure coadd                                                                                                                                                                             
 ALL           = False   # Overrides n_exp.
@@ -36,7 +43,8 @@ archetypes    = False
 verbose       = False
 
 #
-cond          = Table.read('bgs-cmxsv/py/bgs-cmxsv/dat/sv1-exposures.fits')
+cpath         = resource_filename('bgs-cmxsv', 'dat/sv1-exposures.fits')
+cond          = Table.read(cpath)
 cond          = cond[cond['TARGETS'] == 'BGS+MWS']
 
 nights        = np.unique(cond['NIGHT'].data).astype(str)
@@ -56,29 +64,29 @@ for night in nights:
 
 print('\n')
 
-if not os.path.isfile('./spectra/bgs_allcframes_{}.fits'.format(date)):
+if overwrite | (not os.path.isfile(output_dir + '/bgs_allcframes_{}.fits'.format(date))):
     ################################## Get list of exposures ##################################
     exposure_dir_list    = []
     
     for obsdate in nights:
         exposure_dir_list += glob.glob(os.path.join(redux_dir, 'exposures', obsdate, '*'))
-
+        
     ################################## Get list of all science cframes ##################################  
     cframe_list = []
 
     # Get a list of all science exposures.
-    for exposure_dir in exposure_dir_list:
+    for exposure_dir in exposure_dir_list:      
         cframe_list_tmp = glob.glob(os.path.join(exposure_dir, 'cframe-*'))
 
         if len(cframe_list_tmp) > 0:
             if tiles is None:
                 cframe_list += cframe_list_tmp
 
-        else:
-            # only need to check one cframe file in the exposure
-            with fitsio.FITS(cframe_list_tmp[0]) as f:
-                if f[0].read_header()['TILEID'] in tiles:
-                    cframe_list += cframe_list_tmp
+            else:  
+                # only need to check one cframe file in the exposure
+                with fitsio.FITS(cframe_list_tmp[0]) as f:
+                    if f[0].read_header()['TILEID'] in tiles:
+                        cframe_list += cframe_list_tmp
                     
     cframe_list           = sorted(cframe_list)
 
@@ -141,10 +149,10 @@ if not os.path.isfile('./spectra/bgs_allcframes_{}.fits'.format(date)):
 
     ##  cframes.pprint(max_width=-1)
 
-    cframes.write('./spectra/bgs_allcframes_{}.fits'.format(date), format='fits', overwrite=True)
+    cframes.write(output_dir + '/bgs_allcframes_{}.fits'.format(date), format='fits', overwrite=True)
 
 ## 
-cframes = Table.read('./spectra/bgs_allcframes_{}.fits'.format(date))
+cframes = Table.read(output_dir + '/bgs_allcframes_{}.fits'.format(date))
 
 ## 
 output_argument_list = []
