@@ -12,6 +12,6 @@ if __name__ == "__main__":
         package_dir={'': 'py'}, 
         install_requires = ['numpy', 'matplotlib', 'scipy', 'fitsio'],
         include_package_data=True,
-        package_data={'bgs_sv': ['dat/*.fits', 'dat/*.txt']},
+        package_data={'bgs_sv': ['dat/*']},
         zip_safe=True,
     )
