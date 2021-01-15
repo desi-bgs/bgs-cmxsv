@@ -48,7 +48,7 @@ def sv1_deep_exposures():
 
     # bin exposures by tileid and sum up the exposure time and depths
     dexps = deep['TILEID', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH']
-    dexps_binned = dexps.group_by('TILEID').groups.aggreate(np.sum)
+    dexps_binned = dexps.group_by('TILEID').groups.aggregate(np.sum)
     
     return atable.join(dexps_binned, tinfo, keys='TILEID', join_type='left')
 
@@ -198,7 +198,8 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
     
     petals = [] 
     for petal in range(10):
-        fzbest = os.path.join(dir_zbest, 'zbest-%i-%i-%s.fits' % (petal, tileid)) 
+        fzbest = os.path.join(dir_zbest, 'zbest-%i-%i-%s.fits' % (petal,
+            tileid, str(date))) 
 
         if not os.path.isfile(fzbest): 
             print(" %s does not exist" % fzbest) 
@@ -211,13 +212,13 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
         tinfo = fmap['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'FLUX_R',
                 'FIBERFLUX_R', 'PHOTSYS', 'SV1_DESI_TARGET', 'SV1_BGS_TARGET',
                 'DESI_TARGET', 'BGS_TARGET'] 
-        tinfo    = astropy.table.unique(tinfo, keys='TARGETID')
+        tinfo    = atable.unique(tinfo, keys='TARGETID')
         
-        deep     = join(zbest, tinfo, keys='TARGETID', join_type='left')
+        deep     = atable.join(zbest, tinfo, keys='TARGETID', join_type='left')
         assert len(deep) == 500 # fibers per petal
         
         # bad fibers
-        badfiber = deep['NODATA']
+        badfiber = (deep['ZWARN'] & 2**9) != 0 # no data 
 
         # only keep bgs 
         badbgs   = (deep['SV1_DESI_TARGET'] & sv1_desi_mask['BGS_ANY']) == 0
@@ -237,4 +238,4 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
         cuts = ~badfiber & ~badbgs
         petals.append(deep[~cuts])
     
-    return atable.hstack(petals) 
+    return atable.vstack(petals) 
