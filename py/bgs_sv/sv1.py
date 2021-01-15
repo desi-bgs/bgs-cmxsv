@@ -221,21 +221,22 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
         badfiber = (deep['ZWARN'] & 2**9) != 0 # no data 
 
         # only keep bgs 
-        badbgs   = (deep['SV1_DESI_TARGET'] & sv1_desi_mask['BGS_ANY']) == 0
-
-        nbright  = (deep['SV1_BGS_TARGET'] & sv1_bgs_mask['BGS_BRIGHT']) == 0
-        nfaint   = (deep['SV1_BGS_TARGET'] & sv1_bgs_mask['BGS_FAINT'])  == 0
+        is_bgs_all   = (deep['SV1_DESI_TARGET'] & sv1_desi_mask['BGS_ANY']) != 0
+        is_bright  = (deep['SV1_BGS_TARGET'] & sv1_bgs_mask['BGS_BRIGHT']) != 0
+        is_faint   = (deep['SV1_BGS_TARGET'] & sv1_bgs_mask['BGS_FAINT'])  != 0
         
         if targetclass == 'all':
-            # limit to faint | bright bgs only.
-            badbgs   = badbgs | (nbright & nfaint)
+            # all BGS targets 
+            is_bgs = is_bgs_all
         elif targetclass == 'bright': 
             # limit to bright bgs only.
-            badbgs   = badbgs | nbright
+            is_bgs = is_bgs_all & is_bright # this should be redundant
+        elif targetclass == 'faint': 
+            is_bgs = is_bgs_all & is_faint # this should be redundant
         else: 
             raise NotImplementedError
     
-        cuts = ~badfiber & ~badbgs
-        petals.append(deep[~cuts])
+        cuts = ~badfiber & is_bgs # not a bad fiber and is BGS 
+        petals.append(deep[cuts])
     
     return atable.vstack(petals) 
