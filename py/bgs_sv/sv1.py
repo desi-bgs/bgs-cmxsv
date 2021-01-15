@@ -28,8 +28,8 @@ def sv1_exposures():
     return atable.Table.read(fexp)
 
 
-def sv1_deep_exposures(): 
-    ''' read in summary of SV1 *deep* exposures to astropy table. These
+def blanc_deep_exposures(): 
+    ''' read in summary of SV1 blanc *deep* exposures to astropy table. These
     deep "exposures" are combination of a bunch of separate exposures. 
     '''
     # read all sv1 exposures 
@@ -51,6 +51,32 @@ def sv1_deep_exposures():
     dexps_binned = dexps.group_by('TILEID').groups.aggregate(np.sum)
     
     return atable.join(dexps_binned, tinfo, keys='TILEID', join_type='left')
+
+
+def blanc_nightly_exposures(): 
+    ''' read in summary of SV1 blanc nightly exposures *with deep exposure* to
+    astropy table. The nightly exposures are combination of multiple separate 
+    exposures throughout the night.
+    '''
+    # read all sv1 exposures 
+    sv1 = sv1_exposures() 
+
+    # read in tileid, date, exposure id
+    _, _, deep_expid = np.loadtxt(
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dat',
+                'blanc_deep_explist.dat'), 
+            unpack=True)
+    # match them to the sv1 exposure table using the expid 
+    deep = sv1[np.isin(sv1['EXPID'], deep_expid)] 
+   
+    # tile information 
+    tinfo = atable.unique(deep['TILEID', 'NIGHT', 'TILERA', 'TILEDEC'], keys=['TILEID', 'NIGHT'])
+
+    # bin exposures by tileid and sum up the exposure time and depths
+    dexps = deep['TILEID', 'NIGHT', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH']
+    dexps_binned = dexps.group_by(['TILEID', 'NIGHT']).groups.aggregate(np.sum)
+    
+    return atable.join(dexps_binned, tinfo, keys=['TILEID', 'NIGHT'], join_type='left')
 
 
 def sv1_bright_exposures(): 
@@ -231,8 +257,10 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
         elif targetclass == 'bright': 
             # limit to bright bgs only.
             is_bgs = is_bgs_all & is_bright # this should be redundant
+            assert np.sum(is_bright) == np.sum(is_bgs) 
         elif targetclass == 'faint': 
             is_bgs = is_bgs_all & is_faint # this should be redundant
+            assert np.sum(is_faint) == np.sum(is_bgs) 
         else: 
             raise NotImplementedError
     
