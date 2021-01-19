@@ -79,13 +79,17 @@ def blanc_nightly_exposures():
     return atable.join(dexps_binned, tinfo, keys=['TILEID', 'NIGHT'], join_type='left')
 
 
-def blanc_nexp1_exposures(): 
+def blanc_nexp1_exposures(bright=False): 
     ''' read in summary of SV1 blanc **single** nexp=1 exposures to astropy
     table. These single exposures have corresponding *deep* exposures to use as
     truth table. 
     '''
-    # read all sv1 exposures 
-    sv1 = sv1_exposures() 
+    if not bright: 
+        # read all sv1 exposures 
+        sv1 = sv1_exposures() 
+    else: 
+        # read all sv1 bright exposures 
+        sv1 = sv1_bright_exposures() 
 
     # read in tileid, date, exposure id
     _, _, deep_expid = np.loadtxt(
