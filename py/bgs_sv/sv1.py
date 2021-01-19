@@ -218,14 +218,24 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
     '''
     from desitarget.sv1.sv1_targetmask import desi_mask as sv1_desi_mask
     from desitarget.sv1.sv1_targetmask import bgs_mask as sv1_bgs_mask
-
-    dir_redux = '/global/cfs/cdirs/desi/spectro/redux/%s/' % redux
-    dir_zbest = os.path.join(dir_redux, 'tiles', str(tileid), str(date)) 
+    
+    if expid is None: 
+        dir_redux = '/global/cfs/cdirs/desi/spectro/redux/%s/' % redux
+        dir_zbest = os.path.join(dir_redux, 'tiles', str(tileid), str(date)) 
+    else: 
+        dir_redux = '/global/cscratch1/sd/mjwilson/desi/SV1/spectra/exposures/NEXP1/'
+        dir_zbest = os.path.join(dir_redux, str(tileid), str(date)) 
+        expid = str(expid).zfill(8)
     
     petals = [] 
     for petal in range(10):
-        fzbest = os.path.join(dir_zbest, 'zbest-%i-%i-%s.fits' % (petal,
-            tileid, str(date))) 
+        if expid is None: # multi-exposure coadds 
+            fzbest = os.path.join(dir_zbest, 'zbest-%i-%i-%s.fits' % (petal,
+                tileid, str(date))) 
+        else: 
+            # zbest from Mike's single exposure coadds
+            fzbest = os.path.join(dir_zbest, 'zbest-%s-%i-%s.fits' % 
+                    (date, petal, expid))
 
         if not os.path.isfile(fzbest): 
             print(" %s does not exist" % fzbest) 
