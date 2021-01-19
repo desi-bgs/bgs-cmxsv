@@ -293,6 +293,9 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
         elif targetclass == 'faint': 
             is_bgs = is_bgs_all & is_faint # this should be redundant
             assert np.sum(is_faint) == np.sum(is_bgs) 
+        elif targetclass == 'brightfaint': 
+            # limit to bright and faint only 
+            is_bgs = is_bgs_all & (is_bright | is_faint)
         else: 
             raise NotImplementedError
     
