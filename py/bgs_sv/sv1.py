@@ -24,7 +24,8 @@ def sv1_exposures():
     ''' read in  summary of SV1 exposures (Anand, from Aaron & David K) to
     astropy table. `sv1-exposures.fits` was compiled by Mike W. 
     '''
-    fexp = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dat', 'sv1-exposures.fits')
+    fexp = '/global/cfs/cdirs/desi/survey/observations/SV1/sv1-exposures.fits'
+    #os.path.join(os.path.dirname(os.path.realpath(__file__)), 'dat', 'sv1-exposures.fits')
     return atable.Table.read(fexp)
 
 
