@@ -116,9 +116,8 @@ def sv1_bright_exposures():
     return exps[is_bright]
 
 
-def get_obs_sky(night, expid, exptime, ftype="model", redux="daily", smoothing=100.0):
-    ''' get observed sky surface brightness for exposure specified by (night,
-    expid, exptime) 
+def get_obs_sky(night, expid, ftype="model", redux="daily", smoothing=100.0):
+    ''' get observed sky surface brightness for exposure specified by (night, expid) 
     
     # AR r-band sky mag / arcsec2 from sky-....fits files
     # AR ftype = "data" or "model"
