@@ -213,7 +213,8 @@ def get_obs_sky(night, expid, ftype="model", redux="daily", smoothing=100.0):
 
         if keep.sum() == 0:
             print("%s-%s-%s: no spectra for %s" % (night, expid, camera, ftype))
-        sky[cslice[camera]][keep] = (sky_cam[keep] / norm_cam[keep] / exptime / thru[camera][keep])
+        else: 
+            sky[cslice[camera]][keep] = (sky_cam[keep] / norm_cam[keep] / exptime / thru[camera][keep])
     
     # convert sky to erg/A/s/cm^2/arcsec^2
 
