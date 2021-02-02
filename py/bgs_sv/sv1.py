@@ -116,7 +116,8 @@ def sv1_bright_exposures():
     return exps[is_bright]
 
 
-def get_obs_sky(night, expid, ftype="model", redux="daily", smoothing=100.0):
+def get_obs_sky(night, expid, ftype="model", redux="daily", smoothing=100.0,
+        silent=True):
     ''' get observed sky surface brightness for exposure specified by (night, expid) 
     
     # AR r-band sky mag / arcsec2 from sky-....fits files
@@ -175,7 +176,7 @@ def get_obs_sky(night, expid, ftype="model", redux="daily", smoothing=100.0):
                 fn = os.path.join(reduxdir, "exposures", night, expid, 
                         "sky-%s%s-%s.fits" % (camera, spec, expid),)
                 if not os.path.isfile(fn):
-                    print("Skipping non-existent %s" % fn)
+                    if not silent: print("Skipping non-existent %s" % fn)
                     continue 
 
                 fd = fitsio.FITS(fn)
