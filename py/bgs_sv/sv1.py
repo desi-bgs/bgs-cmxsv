@@ -9,6 +9,7 @@ import os
 import yaml
 import fitsio
 import numpy as np 
+from itertools import chain, combinations_with_replacement
 # -- astropy -- 
 from astropy.io import fits 
 import astropy.table as atable
@@ -335,4 +336,3 @@ def _sky_brightness_5000A_model_notwilight(airmass, moon_frac, moon_alt, moon_se
         theta_transform[:, i] = theta[:, comb].prod(1)
 
     return np.dot(theta_transform, skymodel_coeff.T)
-
