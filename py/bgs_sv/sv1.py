@@ -314,7 +314,7 @@ def sky_brightness_5000A_model(airmass, moon_frac, moon_alt, moon_sep, sun_alt, 
     '''
     Isky_notwi = _sky_brightness_5000A_model_notwilight(airmass, moon_frac, moon_alt, moon_sep)
     Isky_twi = _sky_brightness_5000A_model_twilight(airmass, sun_alt, sun_sep) 
-    return Isky_notwi + Isky_twi 
+    return Isky_notwi + np.clip(Isky_twi, 0, None) 
 
 
 def _sky_brightness_5000A_model_notwilight(airmass, moon_frac, moon_alt, moon_sep):
