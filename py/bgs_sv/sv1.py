@@ -312,9 +312,9 @@ def sky_brightness_5000A_model(airmass, moon_frac, moon_alt, moon_sep, sun_alt, 
     ''' polynomial regression model for sky brightness at 5000A given observing
     conditions. *twilight currently not implemented* 
     '''
-    Isky_notwi = _sky_brightness_model_notwilight(airmass, moon_frac, moon_alt, moon_sep)
-    Isky_twi = 0.
-    return Isky_notwi
+    Isky_notwi = _sky_brightness_5000A_model_notwilight(airmass, moon_frac, moon_alt, moon_sep)
+    Isky_twi = _sky_brightness_5000A_model_twilight(airmass, sun_alt, sun_sep) 
+    return Isky_notwi + Isky_twi 
 
 
 def _sky_brightness_5000A_model_notwilight(airmass, moon_frac, moon_alt, moon_sep):
@@ -323,14 +323,31 @@ def _sky_brightness_5000A_model_notwilight(airmass, moon_frac, moon_alt, moon_se
     '''
     norder = 2
     skymodel_coeff = np.array([ 
-        1.11964670e+00,  1.89072762e-01,  3.20306279e+00,  4.10688340e-02,
-       -2.66073069e-02, -5.44857514e-01,  4.15680599e+00,  1.75625108e-02,
-       -5.01143360e-03,  1.30579080e+00,  6.17225096e-02, -1.07765709e-01,
-       -7.23089844e-04, -5.42455907e-04,  6.32035728e-04])
+        1.22875526e+00,  1.91591548e-01,  3.17313759e+00,  5.22047416e-02,
+       -3.87652985e-02, -5.33224507e-01,  4.63261325e+00,  1.13410640e-02,
+       -1.01921126e-02,  1.06314395e+00,  7.26049602e-02, -1.08328690e-01,
+       -8.95312945e-04, -5.59394346e-04,  7.99072084e-04])
 
     theta = np.atleast_2d(np.array([airmass, moon_frac, moon_alt, moon_sep]).T)
 
     combs = chain.from_iterable(combinations_with_replacement(range(4), i) for i in range(0, norder+1))
+    theta_transform = np.empty((theta.shape[0], len(skymodel_coeff)))
+    for i, comb in enumerate(combs):
+        theta_transform[:, i] = theta[:, comb].prod(1)
+
+    return np.dot(theta_transform, skymodel_coeff.T)
+
+
+def _sky_brightness_5000A_model_twilight(airmass, sun_alt, sun_sep): 
+    ''' polynomial regression model for sky brightness twilight contribution at
+    5000A fit to BOSS exposures with sun alt > -18. 
+    '''
+    norder = 1
+    skymodel_coeff = np.array([2.00474700e+00, 3.19827604e+00, 3.13212960e-01, 2.69673079e-03])
+
+    theta = np.atleast_2d(np.array([airmass, sun_alt, sun_sep]).T)
+
+    combs = chain.from_iterable(combinations_with_replacement(range(3), i) for i in range(0, norder+1))
     theta_transform = np.empty((theta.shape[0], len(skymodel_coeff)))
     for i, comb in enumerate(combs):
         theta_transform[:, i] = theta[:, comb].prod(1)
