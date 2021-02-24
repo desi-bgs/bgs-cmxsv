@@ -248,8 +248,9 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
         dir_redux = '/global/cfs/cdirs/desi/spectro/redux/%s/' % redux
         dir_zbest = os.path.join(dir_redux, 'tiles', str(tileid), str(date)) 
     else: 
-        dir_redux = '/global/cscratch1/sd/mjwilson/desi/SV1/spectra/exposures/NEXP1/'
-        dir_zbest = os.path.join(dir_redux, str(tileid), str(date)) 
+        assert redux == 'blanc'
+        dir_redux = '/global/cfs/cdirs/desi/spectro/redux/%s/tiles/' % redux
+        dir_zbest = os.path.join(dir_redux, str(tileid), 'exposures') 
         expid = str(expid).zfill(8)
     
     petals = [] 
@@ -258,9 +259,9 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
             fzbest = os.path.join(dir_zbest, 'zbest-%i-%i-%s.fits' % (petal,
                 tileid, str(date))) 
         else: 
-            # zbest from Mike's single exposure coadds
-            fzbest = os.path.join(dir_zbest, 'zbest-%s-%i-%s.fits' % 
-                    (date, petal, expid))
+            # zbest from Rongpu's single exposure coadds
+            fzbest = os.path.join(dir_zbest, 'zbest-%i-%i-%s.fits' % 
+                    (petal, tileid, expid))
 
         if not os.path.isfile(fzbest): 
             print(" %s does not exist" % fzbest) 
