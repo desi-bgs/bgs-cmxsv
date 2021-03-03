@@ -25,7 +25,7 @@ def is_badz(cat, dX2_lim=40., verbose=False, summary=False, cuts_list=None):
     isummary = {}
     
     if cuts_list is None:
-        print('is None')
+        #print('is None')
         #for label, cut in zip(labels, cuts):
         for label, cut in cuts.items():
             badz = badz | cut
