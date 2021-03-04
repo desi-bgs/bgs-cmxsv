@@ -35,7 +35,7 @@ def get_sun(mjd):
         altitude of the sun  in degrees
     '''
     obs = mayall.copy() 
-    obs.time = atime.Time(mjd, format='mjd').iso
+    obs.date = atime.Time(mjd, format='mjd').iso
 
     sun = ephem.Sun()
     sun.compute(obs)
@@ -69,7 +69,7 @@ def get_moon(mjd):
         altitude of the sun  in degrees
     '''
     obs = mayall.copy() 
-    obs.time = atime.Time(mjd, format='mjd').iso
+    obs.date = atime.Time(mjd, format='mjd').iso
 
     moon = ephem.Moon()
     moon.compute(obs)
