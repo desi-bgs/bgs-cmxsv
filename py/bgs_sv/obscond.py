@@ -78,3 +78,34 @@ def get_moon(mjd):
     dec = (moon.dec * u.radian).to(u.degree).value
     alt = (moon.alt * u.radian).to(u.degree).value
     return ra, dec, moon.moon_phase, alt
+
+
+def ang_separation(ra1, dec1, ra2, dec2): 
+    ''' angular separation between (ra1, dec1) and (ra2, dec2) 
+
+    Parameters
+    ----------
+    ra1 : float
+        RA in degrees
+
+    dec1 : float 
+        Dec in degrees
+
+    ra2 : float
+        RA in degrees
+
+    dec2 : float 
+        Dec in degrees
+
+    Returns
+    -------
+    sep : float
+        separation in degrees
+    ''''
+    ra1, dec1 = np.deg2rad(ra1), np.deg2rad(dec1)
+    ra2, dec2 = np.deg2rad(ra2), np.deg2rad(dec2)
+
+    havRA12 = 0.5 * (1 - np.cos(ra2 - ra1))
+    havDEC12 = 0.5 * (1 - np.cos(dec2 - dec1))
+    havPHI = havDEC12 + np.cos(dec1) * np.cos(dec2) * havRA12
+    return np.rad2deg(np.arccos(np.clip(1 - 2 * havPHI, -1, +1)))
