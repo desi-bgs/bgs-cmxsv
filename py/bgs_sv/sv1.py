@@ -272,7 +272,7 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
         fmap    = atable.Table(infile['FIBERMAP'].data) 
         
         tinfo = fmap['TARGETID', 'TARGET_RA', 'TARGET_DEC', 'FLUX_G', 'FLUX_R',
-                'FLUX_Z', 'FIBERFLUX_G','FIBERFLUX_R', 'FIBERFLUX_Z',
+                'FLUX_Z', 'FLUX_W1', 'FLUX_W2', 'FIBERFLUX_G','FIBERFLUX_R', 'FIBERFLUX_Z',
                 'PHOTSYS', 'SV1_DESI_TARGET', 'SV1_BGS_TARGET', 'DESI_TARGET',
                 'BGS_TARGET'] 
         tinfo    = atable.unique(tinfo, keys='TARGETID')
