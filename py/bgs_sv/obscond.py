@@ -101,7 +101,7 @@ def ang_separation(ra1, dec1, ra2, dec2):
     -------
     sep : float
         separation in degrees
-    ''''
+    '''
     ra1, dec1 = np.deg2rad(ra1), np.deg2rad(dec1)
     ra2, dec2 = np.deg2rad(ra2), np.deg2rad(dec2)
 
