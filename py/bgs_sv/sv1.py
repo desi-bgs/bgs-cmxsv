@@ -30,6 +30,36 @@ def sv1_exposures():
     return atable.Table.read(fexp)
 
 
+def cascades_deep_exposures(): 
+    ''' read in summary of SV1 Cascades DEEP exposures to astropy table. These
+    deep exposures are combintaions of multiple single exposures and for the
+    purposes of SV can be used to approximate truth tables. 
+    '''
+    import glob 
+    # read all sv1 expsoures 
+    sv1 = sv1_exposures() 
+
+    # get TILES with Cascades deep exposures 
+    deep_tiles = [] 
+    for tid in glob.glob('/global/cfs/cdirs/desi/spectro/redux/cascades/tiles/*'):
+        # has deep exposure 
+        if os.path.isdir(tid, 'deep'): 
+            deep_tiles.append(int(os.path.basename(tid)))
+    
+    # keep SV1 expsoure table with matching TILEID 
+    deep = sv1[np.isin(sv1['TILEID'], deep_deep_tiles)] 
+    
+    # tile information 
+    tinfo = atable.unique(deep['TILEID', 'TILERA', 'TILEDEC'], keys='TILEID')
+    
+    # bin exposures by tileid and sum up the exposure time and depths
+    dexps = deep['TILEID', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH', 
+            'B_DEPTH_EBVAIR', 'R_DEPTH_EBVAIR', 'Z_DEPTH_EBVAIR']
+    dexps_binned = dexps.group_by('TILEID').groups.aggregate(np.sum)
+    
+    return atable.join(dexps_binned, tinfo, keys='TILEID', join_type='left')
+
+
 def blanc_deep_exposures(): 
     ''' read in summary of SV1 blanc *deep* exposures to astropy table. These
     deep "exposures" are combination of a bunch of separate exposures. 
@@ -49,7 +79,8 @@ def blanc_deep_exposures():
     tinfo = atable.unique(deep['TILEID', 'TILERA', 'TILEDEC'], keys='TILEID')
 
     # bin exposures by tileid and sum up the exposure time and depths
-    dexps = deep['TILEID', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH']
+    dexps = deep['TILEID', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH',
+            'B_DEPTH_EBVAIR', 'R_DEPTH_EBVAIR', 'Z_DEPTH_EBVAIR']
     dexps_binned = dexps.group_by('TILEID').groups.aggregate(np.sum)
     
     return atable.join(dexps_binned, tinfo, keys='TILEID', join_type='left')
@@ -75,7 +106,8 @@ def blanc_nightly_exposures():
     tinfo = atable.unique(deep['TILEID', 'NIGHT', 'TILERA', 'TILEDEC'], keys=['TILEID', 'NIGHT'])
 
     # bin exposures by tileid and sum up the exposure time and depths
-    dexps = deep['TILEID', 'NIGHT', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH']
+    dexps = deep['TILEID', 'NIGHT', 'EXPTIME', 'B_DEPTH', 'R_DEPTH', 'Z_DEPTH', 
+            'B_DEPTH_EBVAIR', 'R_DEPTH_EBVAIR', 'Z_DEPTH_EBVAIR']
     dexps_binned = dexps.group_by(['TILEID', 'NIGHT']).groups.aggregate(np.sum)
     
     return atable.join(dexps_binned, tinfo, keys=['TILEID', 'NIGHT'], join_type='left')
