@@ -43,11 +43,11 @@ def cascades_deep_exposures():
     deep_tiles = [] 
     for tid in glob.glob('/global/cfs/cdirs/desi/spectro/redux/cascades/tiles/*'):
         # has deep exposure 
-        if os.path.isdir(tid, 'deep'): 
+        if os.path.isdir(os.path.join(tid, 'deep')): 
             deep_tiles.append(int(os.path.basename(tid)))
     
     # keep SV1 expsoure table with matching TILEID 
-    deep = sv1[np.isin(sv1['TILEID'], deep_deep_tiles)] 
+    deep = sv1[np.isin(sv1['TILEID'], deep_tiles)] 
     
     # tile information 
     tinfo = atable.unique(deep['TILEID', 'TILERA', 'TILEDEC'], keys='TILEID')
@@ -58,6 +58,30 @@ def cascades_deep_exposures():
     dexps_binned = dexps.group_by('TILEID').groups.aggregate(np.sum)
     
     return atable.join(dexps_binned, tinfo, keys='TILEID', join_type='left')
+
+
+def cascades_nexp1_exposures():
+    ''' read in summary of SV1 Cascades SINGLE exposures to astropy table that
+    also have deep exposures 
+    '''
+    import glob 
+    # read all sv1 expsoures 
+    sv1 = sv1_exposures() 
+
+    # get TILES with Cascades single exposures 
+    all_expids = [] 
+    for tid in glob.glob('/global/cfs/cdirs/desi/spectro/redux/cascades/tiles/*'):
+        # has deep exposure 
+        if not os.path.isdir(os.path.join(tid, 'deep')): 
+            continue 
+
+        # get exposure ids
+        expids = np.unique([int(os.path.basename(zf).split('-')[-1].split('.fits')[0]) for zf in glob.glob(os.path.join(tid, 'exposures/zbest*.fits'))])
+        all_expids.append(expids)
+    
+    # keep SV1 expsoure table with matching exposure ids 
+    single = sv1[np.isin(sv1['EXPID'], np.concatenate(all_expids))] 
+    return single 
 
 
 def blanc_deep_exposures(): 

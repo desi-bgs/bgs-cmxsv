@@ -44,7 +44,7 @@ def simulated_GAMA_source_spectra(emlines=True):
         # extract meta-data of galaxies 
         redshift        = gleg['gama-spec']['z']
         absmag_ugriz    = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1
-        r_mag_apflux    = 22.5 - 2.5 * np.log10(gleg['legacy-photo']['apflux_r'][:,1])) # aperture flux
+        r_mag_apflux    = 22.5 - 2.5 * np.log10(gleg['legacy-photo']['apflux_r'][:,1]) # aperture flux
         r_mag_gama      = gleg['gama-photo']['r_petro'] # r-band magnitude from GAMA (SDSS) photometry
         ha_gama         = gleg['gama-spec']['ha_flux'] # halpha line flux
 
