@@ -304,7 +304,6 @@ def get_zbest(tileid, date, expid=None, redux='blanc', targetclass='all'):
         dir_redux = '/global/cfs/cdirs/desi/spectro/redux/%s/' % redux
         dir_zbest = os.path.join(dir_redux, 'tiles', str(tileid), str(date)) 
     else: 
-        assert redux == 'blanc'
         dir_redux = '/global/cfs/cdirs/desi/spectro/redux/%s/tiles/' % redux
         dir_zbest = os.path.join(dir_redux, str(tileid), 'exposures') 
         expid = str(expid).zfill(8)
