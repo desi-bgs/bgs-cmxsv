@@ -15,9 +15,6 @@ import astropy.table as atable
 import astropy.units as units
 import astropy.constants as constants
 
-assert os.environ['NERSC_HOST'] == 'cori'
-assert os.environ['DESIMODEL'] != ''
-
 
 def info_exposures(survey=None, release='everest'): 
     ''' read in exposure info in specified release 
