@@ -162,6 +162,12 @@ def get_exp_zsuccess(tileid, expid, release='everest'):
     # combine all criteria
     zsuccess = crit_zwarn & crit_dchi2 & crit_stype & crit_z_lim & crit_z_err & crit_ztrue
     zbest_exp['ZSUCCESS'] = zsuccess
+    zbest_exp['RR_ZWARN']       = zbest_exp['ZWARN']
+    zbest_exp['RR_DELTACHI2']   = zbest_exp['DELTACHI2']
+    zbest_exp['RR_SPECTYPE']    = zbest_exp['SPECTYPE']
+    zbest_exp['RR_ZERR']        = zbest_exp['ZERR']
+    zbest_exp['RR_Z']           = zbest_exp['Z']
+    zbest_exp['RR_Z_DEEP']      = zbest_exp['Z_TRUE']
     return zbest_exp
 
 
