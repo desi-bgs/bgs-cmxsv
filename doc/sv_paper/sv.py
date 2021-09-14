@@ -131,14 +131,21 @@ def get_exp_zsuccess(tileid, expid, release='everest'):
     # get redrock file for deep, which will be used as the truth table.
     _zbest_deep = rr_deep(tileid, release=release)
     
-    crit_zwarn = (_zbest_deep['ZWARN'] == 0)
-    crit_dchi2 = (_zbest_deep['DELTACHI2']  > 40.) 
     crit_stype = (_zbest_deep['SPECTYPE'] != "STAR") # only galaxy spectra
     crit_z_lim = (_zbest_deep['Z'] > 0.0) & (_zbest_deep['Z'] < 0.6) # rough BGS redshift limit
+    crit_zwarn = (_zbest_deep['ZWARN'] == 0)
+    crit_dchi2 = (_zbest_deep['DELTACHI2']  > 15.) 
     crit_z_err = (_zbest_deep['ZERR'] < (0.0005 * (1. + _zbest_deep['Z'])))
-    
-    truth_table = crit_dchi2 & crit_stype & crit_z_lim & crit_z_err
-    zbest_deep = _zbest_deep[truth_table]['TARGETID', 'Z', 'COADD_NUMEXP', 'COADD_EXPTIME']
+   
+    # exclude spectra that are stars or outside of the BGS redshift range in
+    # the redhsift success calculations. 
+    exclude = crit_stype & crit_z_lim
+    zbest_deep = _zbest_deep[~exclude]['TARGETID', 'Z', 'COADD_NUMEXP', 'COADD_EXPTIME']
+
+    # redshift success of deep exposure --- this is the best we can possibly do
+    deep_true = (crit_zwarn & crit_dchi2 & crit_z_err)[~exclude]
+    zbest_deep['DEEP_TRUE'] = deep_true
+
     # redrock redshifts from DEEP exposure will be used as true redshifts
     zbest_deep.rename_column('Z', 'Z_TRUE')
     zbest_deep.rename_column('COADD_NUMEXP', 'DEEP_NUMEXP')
@@ -160,8 +167,9 @@ def get_exp_zsuccess(tileid, expid, release='everest'):
     crit_ztrue = (dz_1pz < 0.003)
 
     # combine all criteria
-    zsuccess = crit_zwarn & crit_dchi2 & crit_stype & crit_z_lim & crit_z_err & crit_ztrue
-    zbest_exp['ZSUCCESS'] = zsuccess
+    zsuccess = (crit_zwarn & crit_dchi2 & crit_stype & crit_z_lim & crit_z_err
+            & crit_ztrue & zbest_exp['DEEP_TRUE'])
+    zbest_exp['ZSUCCESS']       = zsuccess
     zbest_exp['RR_ZWARN']       = zbest_exp['ZWARN']
     zbest_exp['RR_DELTACHI2']   = zbest_exp['DELTACHI2']
     zbest_exp['RR_SPECTYPE']    = zbest_exp['SPECTYPE']
