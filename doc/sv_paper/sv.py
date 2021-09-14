@@ -139,11 +139,11 @@ def get_exp_zsuccess(tileid, expid, release='everest'):
    
     # exclude spectra that are stars or outside of the BGS redshift range in
     # the redhsift success calculations. 
-    exclude = crit_stype & crit_z_lim
-    zbest_deep = _zbest_deep[~exclude]['TARGETID', 'Z', 'COADD_NUMEXP', 'COADD_EXPTIME']
+    keep = crit_stype & crit_z_lim
+    zbest_deep = _zbest_deep[keep]['TARGETID', 'Z', 'COADD_NUMEXP', 'COADD_EXPTIME']
 
     # redshift success of deep exposure --- this is the best we can possibly do
-    deep_true = (crit_zwarn & crit_dchi2 & crit_z_err)[~exclude]
+    deep_true = (crit_zwarn & crit_dchi2 & crit_z_err)[keep]
     zbest_deep['DEEP_TRUE'] = deep_true
 
     # redrock redshifts from DEEP exposure will be used as true redshifts
