@@ -134,7 +134,7 @@ def get_exp_zsuccess(tileid, expid, release='everest'):
     crit_stype = (_zbest_deep['SPECTYPE'] != "STAR") & (_zbest_deep['SPECTYPE'] != "QSO") # only galaxy spectra
     crit_z_lim = (_zbest_deep['Z'] > 0.0) & (_zbest_deep['Z'] < 0.6) # rough BGS redshift limit
     crit_zwarn = (_zbest_deep['ZWARN'] == 0)
-    crit_dchi2 = (_zbest_deep['DELTACHI2']  > 15.) 
+    crit_dchi2 = (_zbest_deep['DELTACHI2']  > 40.) 
     crit_z_err = (_zbest_deep['ZERR'] < (0.0005 * (1. + _zbest_deep['Z'])))
    
     # exclude spectra that are stars or outside of the BGS redshift range in
@@ -158,7 +158,7 @@ def get_exp_zsuccess(tileid, expid, release='everest'):
     zbest_exp = atable.join(zbest_deep, zbest_exp, keys='TARGETID', join_type='inner')
     
     crit_zwarn = (zbest_exp['ZWARN'] == 0)
-    crit_dchi2 = (zbest_exp['DELTACHI2']  > 15.)#40.) 
+    crit_dchi2 = (zbest_exp['DELTACHI2']  > 40.) 
     crit_stype = (zbest_exp['SPECTYPE'] != "STAR") & (zbest_exp['SPECTYPE'] != "QSO")# only galaxy spectra
     crit_z_lim = (zbest_exp['Z'] > 0.0) & (zbest_exp['Z'] < 0.6) # rough BGS redshift limit
     crit_z_err = (zbest_exp['ZERR'] < (0.0005 * (1. + zbest_exp['Z'])))
