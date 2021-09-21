@@ -6,6 +6,7 @@ module for interfacing with SV data
 import os 
 import glob
 import yaml
+import json
 import fitsio
 import numpy as np 
 from itertools import chain, combinations_with_replacement
@@ -74,12 +75,14 @@ def rr_exposure(tileid, expid, release='everest'):
         hdu     = fits.open(frr)
         zbest   = atable.Table(hdu['REDSHIFTS'].data) # redrock output 
         fmap    = atable.Table(hdu['FIBERMAP'].data)  # fibermap data 
-
+        tsnr2   = atable.Table(hdu['TSNR2'].data)     # TSNR2 data 
+        
         # zbest and fmap should be row-matched starting from Everest :) 
-        petal = atable.join(zbest, fmap, keys='TARGETID', join_type='left')
+        petal   = atable.join(zbest, fmap, keys='TARGETID', join_type='left')
+        petal   = atable.join(petal, tsnr2, keys='TARGETID', join_type='left')
         
         # bad fibers
-        badfiber = (petal['ZWARN'] & 2**9) != 0 # no data 
+        badfiber  = (petal['ZWARN'] & 2**9) != 0 # no data 
         fiberstat = (petal['COADD_FIBERSTATUS'] == 0) 
 
         petals.append(petal[fiberstat & ~badfiber])
@@ -87,8 +90,8 @@ def rr_exposure(tileid, expid, release='everest'):
     return atable.vstack(petals) 
 
 
-def rr_deep(tileid, release='everest'): 
-    ''' redrock redshift success for given tile ID for cumulative coadds 
+def rr_deep(tileid, release='everest', survey='sv1'): 
+    ''' redrock redshift success for given tile ID for cumulative coadds. 
     '''
     if release == 'everest': 
         dat_dir = '/global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/'
@@ -102,6 +105,7 @@ def rr_deep(tileid, release='everest'):
     fRR = lambda i: os.path.join(exp_dir, 'redrock-%i-%i-thru%s.fits' % (i, tileid, date))
     
     petals = [] 
+    
     for i in range(10): 
         frr = fRR(i)
 
@@ -112,9 +116,11 @@ def rr_deep(tileid, release='everest'):
         hdu     = fits.open(frr)
         zbest   = atable.Table(hdu['REDSHIFTS'].data) # redrock output 
         fmap    = atable.Table(hdu['FIBERMAP'].data)  # fibermap data 
-
+        tsnr2   = atable.Table(hdu['TSNR2'].data)     # TSNR2 data 
+        
         # zbest and fmap should be row-matched starting from Everest :) 
-        petal = atable.join(zbest, fmap, keys='TARGETID', join_type='left')
+        petal   = atable.join(zbest, fmap,  keys='TARGETID', join_type='left')
+        petal   = atable.join(petal, tsnr2, keys='TARGETID', join_type='left')
         
         # bad fibers
         badfiber = (petal['ZWARN'] & 2**9) != 0 # no data 
@@ -124,32 +130,88 @@ def rr_deep(tileid, release='everest'):
     
     return atable.vstack(petals) 
 
+def rr_deep_hp(tileid, release='everest', survey='sv1'): 
+    ''' redrock redshift success for given tile ID for cumulative coadds. 
+    '''
+    
+    assert release == 'everest'
+    assert survey == 'sv3'
+    
+    if release == 'everest': 
+        # /sv3/bright/
+        dat_dir = '/global/cfs/cdirs/desi/spectro/redux/everest/healpix/'
+    else: 
+        raise ValueError
 
-def get_exp_zsuccess(tileid, expid, release='everest'): 
+    ff = open('/global/cfs/cdirs/desi/spectro/redux/everest/healpix/tilepix.json')
+    tpix = json.load(ff)    
+    ff.close()
+    
+    hps  = [tpix['{}'.format(tileid)]['{}'.format(petal)] for petal in range(10)]
+    hps  = np.array([item for sublist in hps for item in sublist])
+
+    result = []
+    
+    for hp in hps.astype(str): 
+        # e.g. /global/cfs/cdirs/desi/spectro/redux/everest/healpix/sv3/bright/260/26050/redrock-sv3-bright-26050.fits
+        frr = dat_dir + '/{}/bright/{}/{}/redrock-{}-bright-{}.fits'.format(survey, hp[:-2], hp, survey, hp)
+
+        if not os.path.isfile(frr): 
+            print("  %s does not exist" % frr) 
+            continue 
+
+        hdu     = fits.open(frr)
+        zbest   = atable.Table(hdu['REDSHIFTS'].data) # redrock output         
+        fmap    = atable.Table(hdu['FIBERMAP'].data)  # fibermap data 
+        tsnr2   = atable.Table(hdu['TSNR2'].data)     # TSNR2 data 
+        
+        # zbest and fmap should be row-matched starting from Everest :) 
+        hp      = atable.join(zbest, fmap,  keys='TARGETID', join_type='left')
+        hp      = atable.join(hp,    tsnr2, keys='TARGETID', join_type='left')
+        
+        # bad fibers
+        badfiber = (hp['ZWARN'] & 2**9) != 0 # no data 
+        fiberstat = (hp['COADD_FIBERSTATUS'] == 0) 
+
+        result.append(hp[fiberstat & ~badfiber])
+    
+    return atable.vstack(result) 
+
+
+def get_exp_zsuccess(tileid, expid, release='everest', survey='sv1'): 
     ''' get redshift success rate for given exposure 
     '''
     # get redrock file for deep, which will be used as the truth table.
     _zbest_deep = rr_deep(tileid, release=release)
-    
-    crit_stype = (_zbest_deep['SPECTYPE'] != "STAR") & (_zbest_deep['SPECTYPE'] != "QSO") # only galaxy spectra
-    crit_z_lim = (_zbest_deep['Z'] > 0.0) & (_zbest_deep['Z'] < 0.6) # rough BGS redshift limit
-    crit_zwarn = (_zbest_deep['ZWARN'] == 0)
-    crit_dchi2 = (_zbest_deep['DELTACHI2']  > 40.) 
-    crit_z_err = (_zbest_deep['ZERR'] < (0.0005 * (1. + _zbest_deep['Z'])))
+
+    if survey == 'sv3':
+        dp_tids     = _zbest_deep['TARGETID'].data
+
+        print('Fetching healpix truth redshifts for sv3.')
+        
+        _zbest_deep = rr_deep_hp(tileid, release=release, survey='sv3')
+        _zbest_deep = _zbest_deep[np.isin(_zbest_deep['TARGETID'], dp_tids)]
+            
+    crit_stype  = (_zbest_deep['SPECTYPE'] != "STAR") & (_zbest_deep['SPECTYPE'] != "QSO") # only galaxy spectra
+    crit_z_lim  = (_zbest_deep['Z'] > 0.0) & (_zbest_deep['Z'] < 0.6) # rough BGS redshift limit
+    crit_zwarn  = (_zbest_deep['ZWARN'] == 0)
+    crit_dchi2  = (_zbest_deep['DELTACHI2']  > 40.) 
+    crit_z_err  = (_zbest_deep['ZERR'] < (0.0005 * (1. + _zbest_deep['Z'])))
    
     # exclude spectra that are stars or outside of the BGS redshift range in
     # the redhsift success calculations. 
-    keep = crit_stype & crit_z_lim
-    zbest_deep = _zbest_deep[keep]['TARGETID', 'Z', 'COADD_NUMEXP', 'COADD_EXPTIME']
+    keep        = crit_stype & crit_z_lim
+    zbest_deep  = _zbest_deep[keep]['TARGETID', 'Z', 'COADD_NUMEXP', 'COADD_EXPTIME', 'TSNR2_BGS']
 
     # redshift success of deep exposure --- this is the best we can possibly do
-    deep_true = (crit_zwarn & crit_dchi2 & crit_z_err)[keep]
+    deep_true   = (crit_zwarn & crit_dchi2 & crit_z_err)[keep]
     zbest_deep['DEEP_TRUE'] = deep_true
 
     # redrock redshifts from DEEP exposure will be used as true redshifts
     zbest_deep.rename_column('Z', 'Z_TRUE')
-    zbest_deep.rename_column('COADD_NUMEXP', 'DEEP_NUMEXP')
+    zbest_deep.rename_column('COADD_NUMEXP',  'DEEP_NUMEXP')
     zbest_deep.rename_column('COADD_EXPTIME', 'DEEP_EXPTIME')
+    zbest_deep.rename_column('TSNR2_BGS',     'DEEP_TSNR2_BGS')
     
     # get redrock output for SINGLE exposure for BGS_ANY targets
     zbest_exp = rr_exposure(tileid, expid, release=release)
