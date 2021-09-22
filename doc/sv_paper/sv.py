@@ -8,8 +8,11 @@ import glob
 import yaml
 import json
 import fitsio
-import numpy as np 
-from itertools import chain, combinations_with_replacement
+import numpy as np
+
+from   itertools import chain, combinations_with_replacement
+from   desispec.tsnr import tsnr2_to_efftime
+
 # -- astropy -- 
 from astropy.io import fits 
 import astropy.table as atable
@@ -368,6 +371,7 @@ def get_zbest_exp(tileid, expid, release='everest', survey='sv1', ext_cols=None,
     zbest_exp = atable.join(zbest_deep, zbest_exp, keys='TARGETID', join_type='inner')
     
     zbest_exp = set_zbest_exp_zsuccess(zbest_exp, exp_dX2=exp_dX2)
+    zbest_exp['EXPID'] = expid
         
     # mags. 
     zbest_exp = zbest_exp[(zbest_exp['PHOTSYS'] != '') & (zbest_exp['PHOTSYS'] != 'G')]
@@ -382,6 +386,10 @@ def get_zbest_exp(tileid, expid, release='everest', survey='sv1', ext_cols=None,
 
     zbest_exp['FAINT_FIBCOL'] = (zbest_exp['ZMAG_DRED'] - zbest_exp['W1MAG_DRED']) - 3. / 2.5 * (zbest_exp['GMAG_DRED'] - zbest_exp['RMAG_DRED']) + 1.2
             
+    # Survey speeds - fiber, not tiles speeds.  Offline, not ETC, derived.  
+    zbest_exp['EFFTIME_SPEC'] = tsnr2_to_efftime(zbest_exp['TSNR2_BGS'].data, 'bgs')    
+    zbest_exp['SURVEY_SPEED'] = zbest_exp['EFFTIME_SPEC'].data / (zbest_exp['COADD_EXPTIME'].data / 10. ** (2. * 2.165 * zbest_exp['EBV'].data / 2.5))
+        
     return zbest_exp
 
 
