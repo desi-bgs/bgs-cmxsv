@@ -9,6 +9,7 @@ import yaml
 import json
 import fitsio
 import numpy as np
+import functools
 
 from   itertools import chain, combinations_with_replacement
 from   desispec.tsnr import tsnr2_to_efftime
@@ -157,6 +158,12 @@ def mwdust_transmission(ebv, band, photsys, match_legacy_surveys=False):
 
         return transmission
 
+@functools.lru_cache
+def get_explist(release='everest'):
+    assert release == 'everest'
+    
+    return atable.Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/exposures-{}.fits'.format(release, release), hdu=1)
+    
 def rr_exposure(tileid, expid, release='everest'):
     ''' redrock redshift success for given tile ID and exposure ID
     '''
@@ -384,12 +391,20 @@ def get_zbest_exp(tileid, expid, release='everest', survey='sv1', ext_cols=None,
         if band == 'r':
             zbest_exp['FIBER_RMAG_DRED'] = 22.5 - 2.5 * np.log10((zbest_exp['FIBERFLUX_{}'.format(band.upper())] / trans).clip(1e-16))
 
-    zbest_exp['FAINT_FIBCOL'] = (zbest_exp['ZMAG_DRED'] - zbest_exp['W1MAG_DRED']) - 3. / 2.5 * (zbest_exp['GMAG_DRED'] - zbest_exp['RMAG_DRED']) + 1.2
+    zbest_exp['FAINT_FIBCOL']  = (zbest_exp['ZMAG_DRED'] - zbest_exp['W1MAG_DRED']) - 3. / 2.5 * (zbest_exp['GMAG_DRED'] - zbest_exp['RMAG_DRED']) + 1.2
             
     # Survey speeds - fiber, not tiles speeds.  Offline, not ETC, derived.  
-    zbest_exp['EFFTIME_SPEC'] = tsnr2_to_efftime(zbest_exp['TSNR2_BGS'].data, 'bgs')    
-    zbest_exp['SURVEY_SPEED'] = zbest_exp['EFFTIME_SPEC'].data / (zbest_exp['COADD_EXPTIME'].data / 10. ** (2. * 2.165 * zbest_exp['EBV'].data / 2.5))
-        
+    zbest_exp['EFFTIME_SPEC']  = tsnr2_to_efftime(zbest_exp['TSNR2_BGS'].data, 'bgs')    
+
+    zbest_exp['SURVEY_SPEED']  = 10. ** (2. * 2.165 * zbest_exp['EBV'].data / 2.5) * zbest_exp['EFFTIME_SPEC'].data / zbest_exp['COADD_EXPTIME'].data 
+                                                                             
+    explist = get_explist(release=release)
+    
+    zbest_exp['EFFTIME_ETC']       = explist['EFFTIME_ETC'].data[explist['EXPID'] == expid]
+                                                                   
+                                                                   
+    zbest_exp['ETC_SURVEY_SPEED']  = 10. ** (2. * 2.165 * zbest_exp['EBV'].data / 2.5) * zbest_exp['EFFTIME_ETC'].data / zbest_exp['COADD_EXPTIME'].data 
+                                                                     
     return zbest_exp
 
 
