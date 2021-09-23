@@ -161,11 +161,12 @@ def mwdust_transmission(ebv, band, photsys, match_legacy_surveys=False):
         return transmission
 
 
-@functools.lru_cache
+@functools.lru_cache()
 def get_explist(release='everest'):
     assert release == 'everest'
-    
-    return atable.Table.read('/global/cfs/cdirs/desi/spectro/redux/{}/exposures-{}.fits'.format(release, release), hdu=1)
+    feverest = '/global/cfs/cdirs/desi/spectro/redux/{}/exposures-{}.fits'.format(release, release)
+    return atable.Table.read(feverest, hdu=1)
+
     
 def rr_exposure(tileid, expid, release='everest'):
     ''' redrock redshift success for given tile ID and exposure ID
