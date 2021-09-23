@@ -54,6 +54,7 @@ def info_tiles(survey=None, release='everest'):
         # only return exposures from specific surveys
         return tiles[tiles['SURVEY'] == survey]
     
+
 def extinction_total_to_selective_ratio(band, photsys, match_legacy_surveys=False) :
     """Return the linear coefficient R_X = A(X)/E(B-V) where
     A(X) = -2.5*log10(transmission in X band),
@@ -124,6 +125,7 @@ def extinction_total_to_selective_ratio(band, photsys, match_legacy_surveys=Fals
     assert(photsys.upper() in ["N","S","G"])
     return R["{}_{}".format(band.upper(),photsys.upper())]
 
+
 def mwdust_transmission(ebv, band, photsys, match_legacy_surveys=False):
     """Convert SFD E(B-V) value to dust transmission 0-1 for band and photsys
     Args:
@@ -157,6 +159,7 @@ def mwdust_transmission(ebv, band, photsys, match_legacy_surveys=False):
             transmission[ii] = 10**(-a_band / 2.5)
 
         return transmission
+
 
 @functools.lru_cache
 def get_explist(release='everest'):
@@ -249,6 +252,7 @@ def rr_deep(tileid, release='everest'):
     
     return atable.vstack(petals) 
 
+
 def rr_deep_hp(tileid, release='everest', survey='sv1'): 
     ''' redrock redshift success for given tile ID for cumulative coadds. 
     '''
@@ -300,6 +304,7 @@ def rr_deep_hp(tileid, release='everest', survey='sv1'):
     
     return atable.vstack(result) 
 
+
 def set_zbest_exp_zsuccess(zbest_exp, exp_dX2=40.):
     zbest_exp  = atable.Table(zbest_exp, copy=True) 
     
@@ -325,6 +330,7 @@ def set_zbest_exp_zsuccess(zbest_exp, exp_dX2=40.):
     zbest_exp['RR_Z_DEEP']      = zbest_exp['Z_TRUE']
     
     return zbest_exp
+
 
 def get_zbest_exp(tileid, expid, release='everest', survey='sv1', ext_cols=None, exp_dX2=40.): 
     ''' get redshift success rate for given exposure 
