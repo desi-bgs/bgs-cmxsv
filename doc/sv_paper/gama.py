@@ -12,15 +12,16 @@ def get_gama():
     lgama = atable.Table.read(flgama)
     zgama = atable.Table.read(fzgama)
     
-    lgama['GAMA_NAME'] = zgama['GAMA_NAME'].data
-    lgama['GAMA_SPECID']    = zgama['SPECID'].data
-    lgama['GAMA_SURVEY']    = zgama['SURVEY'].data
-    lgama['GAMA_Z']     = zgama['Z'].data
-    lgama['GAMA_NQ']        = zgama['NQ'].data
+    lgama['GAMA_NAME']          = zgama['GAMA_NAME'].data
+    lgama['GAMA_SPECID']        = zgama['SPECID'].data
+    lgama['GAMA_SURVEY']        = zgama['SURVEY'].data
+    lgama['GAMA_SURVEY_CLASS']  = zgama['SURVEY_CLASS'].data
+    lgama['GAMA_Z']             = zgama['Z'].data
+    lgama['GAMA_NQ']            = zgama['NQ'].data
 
     lgama.rename_column('OBJID', 'BRICK_OBJID')
     
-    return lgama['GAMA_NAME', 'GAMA_SPECID', 'GAMA_SURVEY', 'GAMA_Z', 'GAMA_NQ', 'BRICKID', 'BRICK_OBJID']
+    return lgama['GAMA_NAME', 'GAMA_SPECID', 'GAMA_SURVEY', 'GAMA_SURVEY_CLASS', 'GAMA_Z', 'GAMA_NQ', 'BRICKID', 'BRICK_OBJID']
     
 
 def gama_match(sv_gals):
