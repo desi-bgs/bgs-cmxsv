@@ -23,13 +23,14 @@ def get_gama(dr=4):
     
     lgama['GAMA_SPECID']        = zgama['SPECID'].data
     lgama['GAMA_SURVEY_CODE']   = zgama['SURVEY_CODE'].data
+    lgama['GAMA_SURVEY_CLASS']   = zgama['SURVEY_CLASS'].data    
     lgama['GAMA_Z']             = zgama['Z'].data
     lgama['GAMA_NQ']            = zgama['NQ'].data
 
     lgama.rename_column('OBJID', 'BRICK_OBJID')
     
     #return lgama['GAMA_NAME', 'GAMA_SPECID', 'GAMA_SURVEY', 'GAMA_SURVEY_CODE', 'GAMA_Z', 'GAMA_NQ', 'BRICKID', 'BRICK_OBJID']
-    return lgama['GAMA_SPECID', 'GAMA_SURVEY_CODE', 'GAMA_Z', 'GAMA_NQ', 'BRICKID', 'BRICK_OBJID']
+    return lgama['GAMA_SPECID', 'GAMA_SURVEY_CODE', 'GAMA_SURVEY_CLASS', 'GAMA_Z', 'GAMA_NQ', 'BRICKID', 'BRICK_OBJID']
     
 
 def gama_match(sv_gals, dr=4):
