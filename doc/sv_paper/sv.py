@@ -21,13 +21,10 @@ import astropy.units as units
 import astropy.constants as constants
 
 
-def info_exposures(survey=None, release='everest'): 
+def info_exposures(survey=None, release='fuji'): 
     ''' read in exposure info in specified release 
     '''
-    if release == 'everest': 
-        fexp = '/global/cfs/cdirs/desi/spectro/redux/everest/exposures-everest.fits'
-    else: 
-        raise ValueError
+    fexp = '/global/cfs/cdirs/desi/spectro/redux/%s/exposures-%s.fits' % (release, release)
 
     exps = atable.Table.read(fexp, hdu=1)
 
@@ -38,14 +35,10 @@ def info_exposures(survey=None, release='everest'):
         return exps[exps['SURVEY'] == survey]
 
 
-def info_tiles(survey=None, release='everest'): 
+def info_tiles(survey=None, release='fuji'): 
     ''' read in tile info in specified release 
     '''
-    if release == 'everest': 
-        ftiles = '/global/cfs/cdirs/desi/spectro/redux/everest/tiles-everest.csv'
-    else: 
-        raise ValueError
-
+    ftiles = '/global/cfs/cdirs/desi/spectro/redux/%s/tiles-%s.csv' % (release, release)
     tiles = atable.Table.read(ftiles)
 
     if survey is None: 
@@ -163,18 +156,14 @@ def mwdust_transmission(ebv, band, photsys, match_legacy_surveys=False):
 
 @functools.lru_cache()
 def get_explist(release='everest'):
-    assert release == 'everest'
     feverest = '/global/cfs/cdirs/desi/spectro/redux/{}/exposures-{}.fits'.format(release, release)
     return atable.Table.read(feverest, hdu=1)
 
     
-def rr_exposure(tileid, expid, release='everest'):
+def rr_exposure(tileid, expid, release='fuji'):
     ''' redrock redshift success for given tile ID and exposure ID
     '''
-    if release == 'everest': 
-        dat_dir = '/global/cfs/cdirs/desi/spectro/redux/everest/tiles/perexp/'
-    else: 
-        raise ValueError
+    dat_dir = '/global/cfs/cdirs/desi/spectro/redux/%s/tiles/perexp/' % release
     
     exp_dir = os.path.join(dat_dir, str(tileid), str(expid).zfill(8))
     assert os.path.isdir(exp_dir), "%s doesn't exist" % exp_dir
@@ -213,10 +202,7 @@ def rr_exposure(tileid, expid, release='everest'):
 def rr_deep(tileid, release='everest'): 
     ''' redrock redshift success for given tile ID for cumulative coadds. 
     '''
-    if release == 'everest': 
-        dat_dir = '/global/cfs/cdirs/desi/spectro/redux/everest/tiles/cumulative/'
-    else: 
-        raise ValueError
+    dat_dir = '/global/cfs/cdirs/desi/spectro/redux/%s/tiles/cumulative/' % release
     
     assert len(glob.glob(os.path.join(dat_dir, str(tileid), '*'))) == 1
     exp_dir = glob.glob(os.path.join(dat_dir, str(tileid), '*'))[0]
@@ -257,16 +243,11 @@ def rr_deep(tileid, release='everest'):
 def rr_deep_hp(tileid, release='everest', survey='sv1'): 
     ''' redrock redshift success for given tile ID for cumulative coadds. 
     '''
-    
     assert survey in ['sv3', 'main']
+    dat_dir = '/global/cfs/cdirs/desi/spectro/redux/%s/healpix/' % release
     
-    if release == 'everest': 
-        # /sv3/bright/
-        dat_dir = '/global/cfs/cdirs/desi/spectro/redux/everest/healpix/'
-    else: 
-        raise ValueError
-
-    ff = open('/global/cfs/cdirs/desi/spectro/redux/everest/healpix/tilepix.json')
+    # hard coded for everest at the moment. 
+    ff = open('/global/cfs/cdirs/desi/spectro/redux/everest/healpix/tilepix.json')# % release)
     tpix = json.load(ff)    
     ff.close()
     
@@ -333,21 +314,21 @@ def set_zbest_exp_zsuccess(zbest_exp, exp_dX2=40.):
     return zbest_exp
 
 
-def get_zbest_exp(tileid, expid, release='everest', survey='sv1', ext_cols=None, exp_dX2=40.): 
+def get_zbest_exp(tileid, expid, release='fuji', survey='sv1', ext_cols=None, exp_dX2=40.): 
     ''' get redshift success rate for given exposure 
     '''
-    # get redrock file for deep, which will be used as the truth table.
-    _zbest_deep = rr_deep(tileid, release=release)
-
     if survey in ['sv3', 'main']:
-        # use deepest coadds - healpixel (coadded across tiles).
-        dp_tids     = _zbest_deep['TARGETID'].data
-        
         # targets in hp overlapping tile.
         _zbest_deep = rr_deep_hp(tileid, release=release, survey=survey)
         
+        # use deepest coadds - healpixel (coadded across tiles).
+        dp_tids     = _zbest_deep['TARGETID'].data
+        
         # remove targets not in tile. 
         _zbest_deep = _zbest_deep[np.isin(_zbest_deep['TARGETID'], dp_tids)]
+    else: 
+        # get redrock file for deep, which will be used as the truth table.
+        _zbest_deep = rr_deep(tileid, release=release)
             
     crit_stype  = (_zbest_deep['SPECTYPE'] != "STAR") & (_zbest_deep['SPECTYPE'] != "QSO") # only galaxy spectra
     crit_z_lim  = (_zbest_deep['Z'] > 0.0) & (_zbest_deep['Z'] < 0.6) # rough BGS redshift limit
@@ -401,7 +382,8 @@ def get_zbest_exp(tileid, expid, release='everest', survey='sv1', ext_cols=None,
     zbest_exp['FAINT_FIBCOL']  = (zbest_exp['ZMAG_DRED'] - zbest_exp['W1MAG_DRED']) - 3. / 2.5 * (zbest_exp['GMAG_DRED'] - zbest_exp['RMAG_DRED']) + 1.2
             
     # Survey speeds - fiber, not tiles speeds.  Offline, not ETC, derived.  
-    zbest_exp['EFFTIME_SPEC']  = tsnr2_to_efftime(zbest_exp['TSNR2_BGS'].data, 'bgs')    
+    zbest_exp['EFFTIME_SPEC']       = tsnr2_to_efftime(zbest_exp['TSNR2_BGS'].data, 'bgs')    
+    zbest_exp['DEEP_EFFTIME_SPEC']  = tsnr2_to_efftime(zbest_exp['DEEP_TSNR2_BGS'], 'bgs') 
 
     zbest_exp['SURVEY_SPEED']  = 10. ** (2. * 2.165 * zbest_exp['EBV'].data / 2.5) * zbest_exp['EFFTIME_SPEC'].data / zbest_exp['COADD_EXPTIME'].data 
                                                                              
@@ -409,9 +391,8 @@ def get_zbest_exp(tileid, expid, release='everest', survey='sv1', ext_cols=None,
     
     zbest_exp['EFFTIME_ETC']       = explist['EFFTIME_ETC'].data[explist['EXPID'] == expid]
                                                                    
-                                                                   
     zbest_exp['ETC_SURVEY_SPEED']  = 10. ** (2. * 2.165 * zbest_exp['EBV'].data / 2.5) * zbest_exp['EFFTIME_ETC'].data / zbest_exp['COADD_EXPTIME'].data 
-                                                                     
+
     return zbest_exp
 
 
