@@ -297,7 +297,7 @@ def set_zbest_exp_zsuccess(zbest_exp, exp_dX2=40.):
     crit_z_err = (zbest_exp['ZERR'] < (0.0005 * (1. + zbest_exp['Z'])))
     
     dz_1pz     = np.abs(zbest_exp['Z_TRUE'] - zbest_exp['Z']) / (1. + zbest_exp['Z_TRUE'])
-    crit_ztrue = (dz_1pz < 0.003)
+    crit_ztrue = (dz_1pz < 0.0033)
 
     # combine all criteria
     zsuccess   = (crit_zwarn & crit_dchi2 & crit_stype & crit_z_lim & crit_z_err
