@@ -7,8 +7,8 @@ def get_gama(dr=4):
         flgama = '/global/cfs/cdirs/desi/target/analysis/truth/dr9.0/south/matched/ls-dr9.0-GAMA-DR3-SpecObj-match.fits'
         fzgama = '/global/cfs/cdirs/desi/target/analysis/truth/dr9.0/south/matched/GAMA-DR3-SpecObj-match.fits'
     elif dr == 4: 
-        flgama = '/global/cscratch1/sd/chahah/bgs-cmxsv/gama_dr4/dr9.0/south/matched/ls-dr9.0-TilingCatv46-match.fits'
-        fzgama = '/global/cscratch1/sd/chahah/bgs-cmxsv/gama_dr4/dr9.0/south/matched/TilingCatv46-match.fits'
+        flgama = '/global/cfs/cdirs/desi/users/chahah/truth-table/dr9.0/south/matched/ls-dr9.0-TilingCatv46-match.fits'
+        fzgama = '/global/cfs/cdirs/desi/users/chahah/truth-table/dr9.0/south/matched/TilingCatv46-match.fits'
         
     if not os.path.isfile(flgama): 
         flgama = '/Users/chahah/data/bgs_cmxsv/sv_paper/ls-dr9.0-GAMA-DR3-SpecObj-match.fits'
